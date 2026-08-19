@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: jairex
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install && cd ../client && npm install && npm run build && cd ../server
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
