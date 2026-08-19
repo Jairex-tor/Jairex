@@ -6,77 +6,79 @@ import useSocket from '../hooks/useSocket';
 import Button from '../components/common/Button';
 import { playSend, playClick, playMessage } from '../utils/sounds';
 
-const AI_RESPONSES = {
-  goal: [
-    "Setting goals is like building a diamond pickaxe - you need a clear plan! Break your big goal into smaller blocks. Each $5 saved is another block placed! 💎",
-    "Great goals are like enchanting tables - they need the right ingredients. Try the SMART method: Specific, Measurable, Achievable, Relevant, Time-bound! 🧱",
-    "Remember, every big castle started with placing one block. Your savings goal is the blueprint - now start building! 🏰",
-  ],
-  save: [
-    "Pro tip: Try the 50/30/20 rule - 50% needs, 30% wants, 20% savings. It's like sorting your inventory into the right slots! 🎒",
-    "Auto-saving is like a redstone contraption - set it up once and it works while you're mining! Set up recurring transfers! ⚙️",
-    "The best savings trick? Pay yourself first. Transfer savings before you spend, just like hoarding diamonds before a creeper encounter! 💰",
-  ],
-  spend: [
-    "Before buying, ask: do I need this, or do I want this? It's like choosing between iron armor and diamond - know when to invest! 🛡️",
-    "Track every purchase for a week. You'll find 'leakage' like a potion brewing stand with a cracked block. Plug those leaks! 🧪",
-    "Try the 24-hour rule - wait a day before non-essential purchases. If you still want it tomorrow, it might be worth the XP! ✨",
-  ],
-  motivation: [
-    "You're doing amazing! Every coin saved is experience gained. Keep grinding and you'll reach that level-up! 🌟",
-    "Remember why you started. Whether it's a dream home or a vacation, your future self will thank you for every block you place today! 💪",
-    "Saving together with your partner is like having a teammate in a raid. You're unstoppable as a team! Keep going! ⚔️",
-    "Small consistent deposits beat big occasional ones. It's like mining - one block at a time builds an empire! 👑",
-  ],
-  default: [
-    "Here's a fun fact: if you save just $5 a day, you'll have $1,825 in a year! That's enough for a pretty nice diamond armor set! ⛏️",
-    "The average couple spends 20% more when they don't track expenses together. Good thing you're using Jairex! 💑",
-    "Emergency funds are like keeping a totem of undying in your inventory - you hope you never need it, but you'll be glad it's there! 🛡️",
-    "Did you know? Couples who save together report higher relationship satisfaction. You're not just building wealth - you're building trust! 💕",
-  ],
-};
-
 function getAIResponse(message, ctx = {}) {
-  const lower = message.toLowerCase();
-  const categories = ['goal', 'save', 'spend', 'motivation'];
-  for (const cat of categories) {
-    const keywords = {
-      goal: ['goal', 'target', 'plan', 'objective', 'dream', 'afford'],
-      save: ['save', 'saving', 'deposit', 'budget', 'invest', 'money'],
-      spend: ['spend', 'bought', 'buy', 'purchase', 'expensive', 'cost', 'price'],
-      motivation: ['motivat', 'give up', 'tired', 'hard', 'lazy', 'quit', 'stuck'],
-    };
-    if (keywords[cat].some((kw) => lower.includes(kw))) {
-      const responses = AI_RESPONSES[cat];
-      return responses[Math.floor(Math.random() * responses.length)];
-    }
-  }
-
-  const { goals = [], profile = null, fmt } = ctx;
+  const lower = message.toLowerCase().trim();
+  const { goals = [], profile = null, fmt = (n) => String(n) } = ctx;
   const stats = profile?.stats || {};
+  const totalSaved = stats.totalSaved || 0;
+  const goal = goals[0] || null;
+  const cur = goal ? goal.currentAmount || 0 : 0;
+  const target = goal ? goal.targetAmount || 1 : 1;
+  const perWeek = goal ? (goal.timesPerWeek || 0) * (goal.amountPerDeposit || 0) : 0;
+  const remaining = target - cur;
+  const weeks = perWeek > 0 ? Math.ceil(remaining / perWeek) : null;
 
-  if (goals.length > 0) {
-    const g = goals[0];
-    const cur = g.currentAmount || 0;
-    const target = g.targetAmount || 1;
-    const pct = Math.min(100, Math.round((cur / target) * 100));
-    const money = fmt ? fmt(cur) : String(cur);
-    if (stats.streak > 0) {
-      return `You're on a ${stats.streak}-day streak 🔥 Keep it going! Your "${g.goalName}" is ${pct}% full (${money} saved). Stay consistent and it's yours!`;
+  if (/^(hi|hello|hey|yo|sup|good (morning|afternoon|evening))/.test(lower)) {
+    return `Hey ${profile?.username || 'there'}! Ready to build those savings blocks together? Ask me about your goals, budgets, or how to save faster! 🧱`;
+  }
+  if (/\b(thanks|thank you|thx|ty)\b/.test(lower)) {
+    return "You're welcome! Happy to help you two reach your goal. Anything else you want to crunch? 💎";
+  }
+
+  let m = lower.match(/(\d+(?:\.\d+)?)\s*(?:%|percent)\s*(?:of|off)\s*(\d+(?:\.\d+)?)/);
+  if (m) {
+    const result = (parseFloat(m[1]) / 100) * parseFloat(m[2]);
+    const toward = goal ? cur + result : null;
+    return `${m[1]}% of ${fmt(parseFloat(m[2]))} is ${fmt(result)}. ${goal ? `That brings "${goal.goalName}" to ${fmt(toward)} (${Math.round((toward / target) * 100)}% of target)!` : 'Save that and you are one block closer!'} 🧮`;
+  }
+
+  m = lower.match(/(\d+(?:\.\d+)?)\s*(plus|\+|minus|-|times|\*|multiplied by|divided by|over|\/)\s*(\d+(?:\.\d+)?)/);
+  if (m) {
+    const a = parseFloat(m[1]);
+    const b = parseFloat(m[3]);
+    let result;
+    if (m[2] === 'plus' || m[2] === '+') result = a + b;
+    else if (m[2] === 'minus' || m[2] === '-') result = a - b;
+    else if (m[2] === 'times' || m[2] === '*' || m[2] === 'multiplied by') result = a * b;
+    else result = a / b;
+    if (isFinite(result)) {
+      return `That's ${fmt(result)}. ${perWeek > 0 ? `At your pace of ${fmt(perWeek)}/week, that's about ${Math.round(result / perWeek)} week${Math.round(result / perWeek) !== 1 ? 's' : ''} of saving.` : 'Nice math for a savings quest!'} 🧮`;
     }
-    return `Looking at your goals, "${g.goalName}" is ${pct}% there — ${money} saved so far. Keep dropping those coins in the pig! 🐷`;
   }
 
-  if (stats.totalSaved > 0) {
-    return `You've saved ${fmt ? fmt(stats.totalSaved) : stats.totalSaved} in total so far. Nice work — every coin counts! 💰`;
+  m = lower.match(/afford\s+(?:to\s+)?(?:buy\s+)?(?:an?\s+)?([$€£₱]?\s*[\d,]+(?:\.\d+)?)/);
+  if (m) {
+    const amt = parseFloat(m[1].replace(/[^0-9.]/g, ''));
+    const saved = totalSaved || cur;
+    if (saved >= amt) {
+      return `You have ${fmt(saved)} saved — yes, you can afford ${fmt(amt)} with ${fmt(saved - amt)} to spare. Just don't let it stall your goal! 💪`;
+    }
+    return `Not yet — you have ${fmt(saved)} and need ${fmt(amt - saved)} more. ${weeks ? `At ${fmt(perWeek)}/week that's about ${weeks} week${weeks !== 1 ? 's' : ''} away.` : 'Set a deposit pace and I can tell you exactly when!'} 🕒`;
   }
 
-  if (stats.level > 1 || stats.xp > 0) {
-    return `You're Level ${stats.level} with ${stats.xp} XP. The more you save together, the faster that level bar fills! ⭐`;
+  if (goal && /\bhow (long|soon)|when (will|do|does)|eta|reach.*goal|finish.*goal|complete.*goal/.test(lower)) {
+    if (remaining <= 0) return `"${goal.goalName}" is already complete! 🎉 Time to celebrate with your partner!`;
+    if (weeks) {
+      const date = new Date();
+      date.setDate(date.getDate() + weeks * 7);
+      return `At your pace (${goal.timesPerWeek}× ${fmt(goal.amountPerDeposit)} = ${fmt(perWeek)}/week), "${goal.goalName}" finishes in ~${weeks} week${weeks !== 1 ? 's' : ''} (around ${date.toLocaleDateString()}). You still need ${fmt(remaining)}. ⏳`;
+    }
+    return `You need ${fmt(remaining)} more to finish "${goal.goalName}". Tell me a weekly amount and I'll estimate a date!`;
   }
 
-  const defaults = AI_RESPONSES.default;
-  return defaults[Math.floor(Math.random() * defaults.length)];
+  if (/\b(budget|monthly|plan)\b/.test(lower)) {
+    return totalSaved > 0
+      ? `You've saved ${fmt(totalSaved)} so far. A good split is 50/30/20 — needs, wants, savings. Even ${fmt(Math.max(10, totalSaved * 0.1))} more a week compounds fast! Want me to build a plan for a specific goal? 📊`
+      : "Let's make a plan! Start with a goal in the Piggy Bank, then I can break it into a weekly budget you both can stick to. 📊";
+  }
+
+  if (goal) {
+    return `Good question! Based on your savings: "${goal.goalName}" is ${Math.round((cur / target) * 100)}% full (${fmt(cur)} of ${fmt(target)}). ${weeks ? `At your pace that's ~${weeks} week${weeks !== 1 ? 's' : ''} to go. ` : ''}Want me to help with a budget or a faster savings pace? 📊`;
+  }
+  if (totalSaved > 0) {
+    return `You've saved ${fmt(totalSaved)} in total — nice work! Set a goal in the Piggy Bank and I'll give you exact numbers, budgets, and timelines. 💰`;
+  }
+  return "Great question! Once you and your partner create a savings goal, I can give exact numbers, budgets, and paces. What are you saving for? 🎯";
 }
 
 function formatTime(dateStr) {
@@ -170,17 +172,12 @@ function PartnerChat({ user }) {
   const handleSend = (type = 'text') => {
     if ((!newMessage.trim() && type === 'text') || !socket || !connected) return;
     const text = type === 'coin' ? '🪙' : newMessage.trim();
-    const msg = {
+    socket.emit('chat-message', {
       coupleId,
       recipientId: partnerId,
       text,
       type,
-      sender: user?._id || user?.id,
-      recipient: partnerId,
-      createdAt: new Date().toISOString(),
-    };
-    socket.emit('chat-message', msg);
-    setMessages((prev) => [...prev, { ...msg, self: true, _id: `local-${Date.now()}` }]);
+    });
     if (type === 'text') setNewMessage('');
     playSend();
   };
@@ -474,6 +471,10 @@ function GroupsTab() {
   const [challenges, setChallenges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', icon: '🎯', description: '' });
+  const [createError, setCreateError] = useState(null);
 
   const fetchChallenges = useCallback(async () => {
     try {
@@ -531,6 +532,30 @@ function GroupsTab() {
     }
   };
 
+  const handleCreate = async () => {
+    if (!createForm.name.trim()) {
+      setCreateError('Enter a challenge name');
+      return;
+    }
+    try {
+      setCreating(true);
+      setCreateError(null);
+      const { data } = await api.post('/challenges', {
+        name: createForm.name.trim(),
+        icon: createForm.icon || '🎯',
+        description: createForm.description.trim(),
+      });
+      playClick();
+      setChallenges((prev) => [data.challenge, ...prev]);
+      setShowCreate(false);
+      setCreateForm({ name: '', icon: '🎯', description: '' });
+    } catch (err) {
+      setCreateError(err.response?.data?.message || 'Failed to create challenge');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div
@@ -552,6 +577,12 @@ function GroupsTab() {
         }}
       >
         Join a challenge to earn +10 XP and keep each other motivated!
+      </div>
+
+      <div>
+        <Button variant="gold" size="sm" onClick={() => setShowCreate(true)}>
+          ＋ Create Challenge
+        </Button>
       </div>
 
       {loading && (
@@ -649,6 +680,103 @@ function GroupsTab() {
           </Button>
         </div>
       ))}
+
+      {/* Create challenge modal */}
+      {showCreate && (
+        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '460px' }}
+          >
+            <div className="modal__header">
+              <div className="modal__title">New Challenge</div>
+              <button className="modal__close" onClick={() => setShowCreate(false)}>
+                ×
+              </button>
+            </div>
+            <div className="modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <div
+                  style={{
+                    fontFamily: "'Press Start 2P', monospace",
+                    fontSize: '7px',
+                    color: '#999',
+                    marginBottom: '6px',
+                  }}
+                >
+                  NAME
+                </div>
+                <input
+                  className="mc-input"
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value.slice(0, 60) }))}
+                  placeholder="e.g., No Junk Food August"
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <div
+                  style={{
+                    fontFamily: "'Press Start 2P', monospace",
+                    fontSize: '7px',
+                    color: '#999',
+                    marginBottom: '6px',
+                  }}
+                >
+                  ICON (any emoji)
+                </div>
+                <input
+                  className="mc-input"
+                  value={createForm.icon}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, icon: e.target.value.slice(0, 4) }))}
+                  placeholder="🎯"
+                  style={{ width: '80px', textAlign: 'center', fontSize: '22px' }}
+                />
+              </div>
+              <div>
+                <div
+                  style={{
+                    fontFamily: "'Press Start 2P', monospace",
+                    fontSize: '7px',
+                    color: '#999',
+                    marginBottom: '6px',
+                  }}
+                >
+                  DESCRIPTION
+                </div>
+                <textarea
+                  className="mc-input"
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value.slice(0, 200) }))}
+                  placeholder="What's the challenge?"
+                  rows={3}
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+              </div>
+              {createError && (
+                <div
+                  style={{
+                    fontFamily: "'VT323', monospace",
+                    fontSize: '18px',
+                    color: 'var(--mc-redstone)',
+                  }}
+                >
+                  {createError}
+                </div>
+              )}
+            </div>
+            <div className="modal__footer">
+              <Button variant="secondary" onClick={() => setShowCreate(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleCreate} disabled={creating}>
+                {creating ? 'Creating...' : 'Create Challenge'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

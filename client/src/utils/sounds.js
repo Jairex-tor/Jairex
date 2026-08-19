@@ -122,3 +122,10 @@ export function playMessage() {
   tone(660, 0, 0.08, 'triangle', 0.06);
   tone(880, 0.09, 0.1, 'triangle', 0.05);
 }
+
+export function playNotification() {
+  if (!isEnabled()) return;
+  tone(587.33, 0, 0.07, 'triangle', 0.07);
+  tone(587.33, 0.12, 0.07, 'triangle', 0.07);
+  tone(880, 0.24, 0.14, 'triangle', 0.08);
+}

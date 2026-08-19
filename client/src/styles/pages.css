@@ -217,6 +217,37 @@
   z-index: 1;
 }
 
+.landing__char--jump {
+  animation: landingJump 0.7s ease-in-out;
+}
+
+.landing__bubble {
+  position: absolute;
+  top: -34px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  border: 3px solid #1a1a1a;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+  color: #1a1a1a;
+  font-family: 'VT323', monospace;
+  font-size: 15px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  z-index: 20;
+  animation: bubblePop 0.2s ease-out;
+}
+
+@keyframes landingJump {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-18px); }
+}
+
+@keyframes bubblePop {
+  0% { transform: translateX(-50%) scale(0.5); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
 .landing__piggy {
   font-size: 80px;
   animation: pig-idle 2.5s ease-in-out infinite;

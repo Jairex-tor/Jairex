@@ -15,7 +15,7 @@ export default function GoalForm({ onSubmit, initialData, onCancel }) {
   const [form, setForm] = useState(
     initialData
       ? {
-          name: initialData.name || '',
+          name: initialData.goalName || initialData.name || '',
           targetAmount: initialData.targetAmount?.toString() || '',
           timesPerWeek: initialData.timesPerWeek?.toString() || '',
           amountPerDeposit: initialData.amountPerDeposit?.toString() || '',
@@ -99,7 +99,7 @@ export default function GoalForm({ onSubmit, initialData, onCancel }) {
     e.preventDefault();
     if (!validate()) return;
     onSubmit({
-      name: form.name.trim(),
+      goalName: form.name.trim(),
       targetAmount: parseFloat(form.targetAmount),
       timesPerWeek: parseInt(form.timesPerWeek, 10),
       amountPerDeposit: parseFloat(form.amountPerDeposit),

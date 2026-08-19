@@ -77,6 +77,8 @@ export default function ProfilePage() {
   const [joinCode, setJoinCode] = useState('');
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [generatingInvite, setGeneratingInvite] = useState(false);
+  const [joiningPartner, setJoiningPartner] = useState(false);
   const avatarInputRef = useRef(null);
 
   const handleAvatarUpload = async (e) => {
@@ -178,10 +180,14 @@ export default function ProfilePage() {
 
   const handleGenerateInvite = async () => {
     try {
+      setError(null);
+      setGeneratingInvite(true);
       const { data } = await api.post('/auth/couple/invite');
       setInviteCode(data.inviteCode || data.code || '');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to generate invite code');
+    } finally {
+      setGeneratingInvite(false);
     }
   };
 
@@ -189,11 +195,14 @@ export default function ProfilePage() {
     if (!joinCode.trim()) return;
     try {
       setError(null);
-      await api.post('/auth/couple/join', { code: joinCode.trim() });
+      setJoiningPartner(true);
+      await api.post('/auth/couple/join', { inviteCode: joinCode.trim() });
       setJoinCode('');
-      fetchProfile();
+      await fetchProfile();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to join partner');
+    } finally {
+      setJoiningPartner(false);
     }
   };
 
@@ -479,8 +488,8 @@ export default function ProfilePage() {
                         </Button>
                       </div>
                     ) : (
-                      <Button variant="gold" size="sm" onClick={handleGenerateInvite} style={{ marginBottom: '12px' }}>
-                        Generate Invite Code
+                      <Button variant="gold" size="sm" onClick={handleGenerateInvite} style={{ marginBottom: '12px' }} disabled={generatingInvite}>
+                        {generatingInvite ? 'Generating...' : 'Generate Invite Code'}
                       </Button>
                     )}
 
@@ -502,8 +511,8 @@ export default function ProfilePage() {
                         placeholder="Partner's code"
                         style={{ flex: 1, fontSize: '18px', padding: '10px 12px' }}
                       />
-                      <Button variant="primary" size="sm" onClick={handleJoinPartner} disabled={!joinCode.trim()}>
-                        Join
+                      <Button variant="primary" size="sm" onClick={handleJoinPartner} disabled={!joinCode.trim() || joiningPartner}>
+                        {joiningPartner ? 'Joining...' : 'Join'}
                       </Button>
                     </div>
                   </div>

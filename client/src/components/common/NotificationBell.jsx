@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 import useSocket from '../../hooks/useSocket';
+import { playNotification } from '../../utils/sounds';
 
 const ROUTE_MAP = {
   partner: '/chat',
@@ -32,6 +33,7 @@ export default function NotificationBell({ collapsed = false }) {
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
+  const [flash, setFlash] = useState(null);
   const panelRef = useRef(null);
 
   const fetchNotifications = useCallback(async () => {
@@ -68,6 +70,9 @@ export default function NotificationBell({ collapsed = false }) {
       if (notif) {
         setNotifications((prev) => [notif, ...prev].slice(0, 50));
         setUnread((prev) => prev + 1);
+        playNotification();
+        setFlash(notif);
+        window.setTimeout(() => setFlash((f) => (f && f._id === notif._id ? null : f)), 3500);
       }
     };
     socket.on('new-notification', handler);
@@ -244,6 +249,59 @@ export default function NotificationBell({ collapsed = false }) {
               </div>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Transient notification popup */}
+      {flash && (
+        <div
+          onClick={() => {
+            handleMarkRead(flash._id);
+            const path = ROUTE_MAP[flash.type] || '/profile';
+            navigate(path);
+          }}
+          style={{
+            position: 'fixed',
+            top: '16px',
+            right: '16px',
+            zIndex: 13000,
+            maxWidth: '300px',
+            background: 'linear-gradient(180deg, #143A2A, #0E2B1F)',
+            border: '3px solid #5A5A5A',
+            boxShadow: '3px 3px 0 rgba(0,0,0,0.4), 0 6px 20px rgba(0,0,0,0.5)',
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+            cursor: 'pointer',
+            animation: 'gamToastIn 0.25s ease-out',
+          }}
+        >
+          <span style={{ fontSize: '24px', lineHeight: 1, flexShrink: 0 }}>{flash.icon || '🔔'}</span>
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontFamily: "'Press Start 2P', monospace",
+                fontSize: '8px',
+                color: '#55FF55',
+                textShadow: '1px 1px 0 rgba(0,0,0,0.6)',
+                marginBottom: '4px',
+              }}
+            >
+              {flash.title}
+            </div>
+            <div
+              style={{
+                fontFamily: "'VT323', monospace",
+                fontSize: '18px',
+                color: '#fff',
+                lineHeight: '1.2',
+                wordBreak: 'break-word',
+              }}
+            >
+              {flash.message}
+            </div>
+          </div>
         </div>
       )}
     </div>

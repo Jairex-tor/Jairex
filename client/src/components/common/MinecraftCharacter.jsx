@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react';
+import { useId, useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { isImageAvatar } from '../../utils/avatar';
 
 const DEFAULT = {
@@ -9,6 +9,15 @@ const DEFAULT = {
   shoes: '#4A3826',
 };
 
+const LINES = [
+  'Keep those coins coming!',
+  'Together we got this!',
+  'Every block counts!',
+  'Hi! Ready to save?',
+  'Let us build it!',
+  'One deposit at a time!',
+];
+
 export default function MinecraftCharacter({
   avatar,
   username,
@@ -18,11 +27,25 @@ export default function MinecraftCharacter({
   pants,
   shoes,
   size = 110,
-  state = 'idle', // 'idle' | 'walk' | 'feeding'
+  state = 'idle', // 'idle' | 'walk' | 'feeding' | 'wave'
   className = '',
+  onReact,
 }) {
   const clipId = useId().replace(/[:]/g, '');
   const faceId = `face-${clipId}`;
+  const [bubble, setBubble] = useState(null);
+  const timerRef = useRef(null);
+
+  const react = useCallback(() => {
+    const line = LINES[Math.floor(Math.random() * LINES.length)];
+    setBubble(line);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setBubble(null), 2800);
+  }, []);
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const showWave = state === 'wave' || !!bubble;
 
   const c = {
     skin: skin || DEFAULT.skin,
@@ -36,10 +59,33 @@ export default function MinecraftCharacter({
 
   return (
     <div
-      className={`mc-char mc-char--${state} ${className}`}
-      style={{ width: size * (64 / 92), height: size }}
+      className={`mc-char mc-char--${state} ${showWave ? 'mc-char--wave' : ''} ${className}`}
+      style={{ width: size * (64 / 92), height: size, cursor: onReact ? 'pointer' : undefined }}
       title={username}
+      onClick={onReact ? () => { react(); onReact(); } : undefined}
     >
+      {bubble && (
+        <div
+          style={{
+            position: 'absolute',
+            top: -18,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#fff',
+            border: '3px solid #1A1A1A',
+            boxShadow: '2px 2px 0 rgba(0,0,0,0.35)',
+            color: '#1A1A1A',
+            fontFamily: "'VT323', monospace",
+            fontSize: '15px',
+            padding: '4px 10px',
+            whiteSpace: 'nowrap',
+            zIndex: 20,
+            animation: 'mcBubblePop 0.2s ease-out',
+          }}
+        >
+          {bubble}
+        </div>
+      )}
       <svg
         className="mc-char__svg"
         viewBox="0 0 64 92"
@@ -133,6 +179,12 @@ export default function MinecraftCharacter({
         .mc-char--feeding { animation: mcCharHop 0.9s ease-in-out; }
         .mc-char--feeding .mc-char__arm-right { animation: mcCharThrow 0.9s ease-in-out; }
         .mc-char--feeding .mc-char__arm-left { animation: mcCharArm 0.9s ease-in-out infinite; }
+        .mc-char--wave { animation: mcCharWave 0.7s ease-in-out; }
+        .mc-char--wave .mc-char__arm-right { animation: mcArmWave 0.7s ease-in-out; }
+        @keyframes mcBubblePop {
+          0% { transform: translateX(-50%) scale(0.6); opacity: 0; }
+          100% { transform: translateX(-50%) scale(1); opacity: 1; }
+        }
         @keyframes mcCharBob {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-3px); }
@@ -161,6 +213,17 @@ export default function MinecraftCharacter({
           50% { transform: translateY(0); }
           70% { transform: translateY(-8px); }
           100% { transform: translateY(0); }
+        }
+        @keyframes mcCharWave {
+          0%, 100% { transform: translateY(0); }
+          30% { transform: translateY(-12px); }
+          60% { transform: translateY(0); }
+        }
+        @keyframes mcArmWave {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(-80deg); }
+          50% { transform: rotate(-55deg); }
+          75% { transform: rotate(-80deg); }
         }
       `}</style>
     </div>

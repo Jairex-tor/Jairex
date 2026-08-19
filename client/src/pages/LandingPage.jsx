@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
 import Button from '../components/common/Button'
 
 const SteveSVG = () => (
@@ -124,9 +125,130 @@ const features = [
 
 export default function LandingPage() {
   const navigate = useNavigate()
+  const [musicOn, setMusicOn] = useState(false)
+  const [bubbles, setBubbles] = useState({ steve: null, alex: null })
+  const [jumping, setJumping] = useState({ steve: false, alex: false })
+  const audioRef = useRef(null)
+  const bubbleTimers = useRef({ steve: null, alex: null })
+  const jumpTimers = useRef({ steve: null, alex: null })
+
+  const steveLines = [
+    'Welcome, adventurer!',
+    'Ready to save some coins?',
+    'Together is better!',
+    'Hi there!',
+  ]
+  const alexLines = [
+    'Let us build a savings world!',
+    'Every deposit is a block!',
+    'Teamwork makes the dream!',
+    'Hello! Want to play?',
+  ]
+
+  const reactChar = (who) => {
+    const lines = who === 'steve' ? steveLines : alexLines
+    const line = lines[Math.floor(Math.random() * lines.length)]
+    if (bubbleTimers.current[who]) clearTimeout(bubbleTimers.current[who])
+    setBubbles((b) => ({ ...b, [who]: line }))
+    bubbleTimers.current[who] = setTimeout(() => setBubbles((b) => ({ ...b, [who]: null })), 2600)
+    if (jumpTimers.current[who]) clearTimeout(jumpTimers.current[who])
+    setJumping((j) => ({ ...j, [who]: true }))
+    jumpTimers.current[who] = setTimeout(() => setJumping((j) => ({ ...j, [who]: false })), 700)
+  }
+
+  const toggleMusic = () => {
+    if (musicOn) {
+      setMusicOn(false)
+      if (audioRef.current) {
+        audioRef.current.disconnect()
+        audioRef.current = null
+      }
+    } else {
+      setMusicOn(true)
+    }
+  }
+
+  useEffect(() => {
+    if (!musicOn || audioRef.current) return
+      const AudioContext = window.AudioContext || window.webkitAudioContext
+      if (!AudioContext) return
+      const ctx = new AudioContext()
+      const melody = [523, 523, 659, 659, 784, 659, 587, 587]
+      const bass = [196, 196, 220, 220, 262, 220, 196, 196]
+      let step = 0
+      let master = null
+      const schedule = () => {
+        if (!audioRef.current) return
+        const now = ctx.currentTime
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'square'
+        osc.frequency.setValueAtTime(melody[step % melody.length], now)
+        gain.gain.setValueAtTime(0.045, now)
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16)
+        osc.connect(gain)
+        gain.connect(master)
+        osc.start(now)
+        osc.stop(now + 0.18)
+        const b = ctx.createOscillator()
+        const bg = ctx.createGain()
+        b.type = 'triangle'
+        b.frequency.setValueAtTime(bass[step % bass.length] / 2, now)
+        bg.gain.setValueAtTime(0.09, now)
+        bg.gain.exponentialRampToValueAtTime(0.0001, now + 0.3)
+        b.connect(bg)
+        bg.connect(master)
+        b.start(now)
+        b.stop(now + 0.32)
+        step += 1
+        setTimeout(schedule, 175)
+      }
+      master = ctx.createGain()
+      master.gain.value = 0.7
+      master.connect(ctx.destination)
+      audioRef.current = { ctx, disconnect: () => ctx.close() }
+      schedule()
+  }, [musicOn])
+
+  useEffect(() => {
+    const s = bubbleTimers.current
+    const j = jumpTimers.current
+    return () => {
+      if (s.steve) clearTimeout(s.steve)
+      if (s.alex) clearTimeout(s.alex)
+      if (j.steve) clearTimeout(j.steve)
+      if (j.alex) clearTimeout(j.alex)
+      if (audioRef.current) audioRef.current.disconnect()
+    }
+  }, [])
 
   return (
     <div className="landing">
+      {/* Music toggle */}
+      <button
+        onClick={toggleMusic}
+        title={musicOn ? 'Turn music off' : 'Turn music on'}
+        style={{
+          position: 'fixed',
+          top: '16px',
+          right: '16px',
+          zIndex: 50,
+          cursor: 'pointer',
+          border: '3px solid #5A5A5A',
+          background: musicOn ? 'linear-gradient(180deg, #143A2A, #0E2B1F)' : 'rgba(0,0,0,0.55)',
+          boxShadow: '2px 2px 0 rgba(0,0,0,0.4)',
+          width: '44px',
+          height: '44px',
+          fontSize: '20px',
+          lineHeight: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {musicOn ? '🔊' : '🔇'}
+      </button>
+
       {/* Hero Section */}
       <div className="landing__hero">
         {/* Ground */}
@@ -136,13 +258,31 @@ export default function LandingPage() {
         </div>
 
         {/* Steve */}
-        <div style={charLeftStyle}>
-          <SteveSVG />
+        <div style={charLeftStyle} className={jumping.steve ? 'landing__char--jump' : ''}>
+          <div
+            onClick={() => reactChar('steve')}
+            title="Steve"
+            style={{ cursor: 'pointer', position: 'relative', display: 'inline-block' }}
+          >
+            {bubbles.steve && (
+              <div className="landing__bubble">{bubbles.steve}</div>
+            )}
+            <SteveSVG />
+          </div>
         </div>
 
         {/* Alex */}
-        <div style={charRightStyle}>
-          <AlexSVG />
+        <div style={charRightStyle} className={jumping.alex ? 'landing__char--jump' : ''}>
+          <div
+            onClick={() => reactChar('alex')}
+            title="Alex"
+            style={{ cursor: 'pointer', position: 'relative', display: 'inline-block' }}
+          >
+            {bubbles.alex && (
+              <div className="landing__bubble">{bubbles.alex}</div>
+            )}
+            <AlexSVG />
+          </div>
         </div>
 
         {/* Title between characters */}

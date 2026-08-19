@@ -24,6 +24,35 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Create a custom challenge
+router.post('/', async (req, res) => {
+  try {
+    const { name, description, icon } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Challenge name required' });
+    }
+
+    const key = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const challenge = new Challenge({
+      key,
+      name: name.trim().slice(0, 60),
+      description: (description || '').trim().slice(0, 200),
+      icon: icon || '🎯',
+      custom: true,
+      createdBy: req.user._id,
+      participants: [req.user._id],
+    });
+    await challenge.save();
+
+    const io = req.app.get('io');
+    await gamification.addXP(req.user._id, JOIN_XP, io);
+
+    res.status(201).json({ challenge: { ...challenge.toObject(), members: 1, joined: true } });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
 // Join a challenge
 router.post('/:key/join', async (req, res) => {
   try {

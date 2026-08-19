@@ -130,6 +130,7 @@ export default function PiggyBank({
             state={activeFeeder === 'left' ? 'feeding' : 'walk'}
             shirt="#3E8948"
             pants="#2C3E70"
+            onReact={() => playClick()}
           />
           <span className="pig-stage__char-name">{partnerName}</span>
         </div>
@@ -145,6 +146,7 @@ export default function PiggyBank({
             state={activeFeeder === 'right' ? 'feeding' : 'walk'}
             shirt="#3F6DB3"
             pants="#2C3E70"
+            onReact={() => playClick()}
           />
           <span className="pig-stage__char-name">{meName}</span>
         </div>
