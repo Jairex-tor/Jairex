@@ -15,7 +15,7 @@ const ACHIEVEMENT_LABELS = {
 const GamificationContext = createContext(null)
 
 export function GamificationProvider({ children }) {
-  const { refreshUser } = useAuth()
+  const { refreshUser, token } = useAuth()
   const [toasts, setToasts] = useState([])
   const prevRef = useRef(null)
 
@@ -67,8 +67,9 @@ export function GamificationProvider({ children }) {
   }, [detect, refreshUser])
 
   useEffect(() => {
+    if (!token) return
     refresh()
-  }, [refresh])
+  }, [token, refresh])
 
   const value = useMemo(() => ({ refresh }), [refresh])
 
