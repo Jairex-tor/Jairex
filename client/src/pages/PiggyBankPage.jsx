@@ -8,12 +8,14 @@ import Button from '../components/common/Button';
 import { useAuth } from '../context/AuthContext';
 import { useGamification } from '../context/GamificationContext';
 import { playDeposit, playAchievement } from '../utils/sounds';
+import useSocket from '../hooks/useSocket';
 
 const CONFETTI_COLORS = ['#FCDB05', '#55FF55', '#55FFFF', '#FF55FF', '#FF5555', '#FF9B50'];
 
 export default function PiggyBankPage() {
   const { user } = useAuth();
   const { refresh } = useGamification();
+  const { socket } = useSocket();
   const navigate = useNavigate();
   const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +61,16 @@ export default function PiggyBankPage() {
   useEffect(() => {
     fetchGoals();
   }, [fetchGoals]);
+
+  // Realtime sync: refetch goals when partner creates/updates/deposits
+  useEffect(() => {
+    if (!socket) return;
+    const handler = () => {
+      fetchGoals();
+    };
+    socket.on('savings-changed', handler);
+    return () => socket.off('savings-changed', handler);
+  }, [socket, fetchGoals]);
 
   const combinedCurrent = useMemo(
     () => goals.reduce((sum, g) => sum + (g.currentAmount || 0), 0),

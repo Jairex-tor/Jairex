@@ -252,6 +252,18 @@ function GoalCard({ goal, onDeposit, onEdit, onDelete }) {
           >
             {isComplete ? '✓ ' : ''}{goal.name}
           </div>
+          {goal.userId?.username && (
+            <div
+              style={{
+                fontFamily: "'VT323', monospace",
+                fontSize: '16px',
+                color: '#888',
+                marginTop: '2px',
+              }}
+            >
+              by {goal.userId.username}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
           {!isComplete && (

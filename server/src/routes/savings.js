@@ -9,6 +9,20 @@ const router = express.Router();
 
 router.use(auth);
 
+async function getPartnerId(coupleId, userId) {
+  const couple = await Couple.findById(coupleId);
+  if (!couple) return null;
+  const a = couple.partner1?.toString();
+  const b = couple.partner2?.toString();
+  if (a === userId.toString()) return b;
+  if (b === userId.toString()) return a;
+  return null;
+}
+
+function emitSavingsChanged(io, coupleId) {
+  io.to(`couple-${coupleId}`).emit('savings-changed', { coupleId });
+}
+
 router.post('/goal', async (req, res) => {
   try {
     if (!req.user.coupleId) {
@@ -30,6 +44,19 @@ router.post('/goal', async (req, res) => {
     const io = req.app.get('io');
     await gamification.addXP(req.user._id, gamification.XP.CREATE_GOAL, io);
     await gamification.grantAchievement(req.user._id, 'goal_setter', io);
+
+    const partnerId = await getPartnerId(req.user.coupleId, req.user._id);
+    if (partnerId) {
+      await notifyUser(io, partnerId, {
+        type: 'goal',
+        title: 'New Goal',
+        message: `${req.user.username} created a goal: "${goalName}"`,
+        icon: '🎯',
+        data: { goalId: goal._id },
+      });
+    }
+    emitSavingsChanged(io, req.user.coupleId);
+
     res.status(201).json({ goal });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
@@ -86,6 +113,9 @@ router.put('/goal/:id', async (req, res) => {
       return res.status(404).json({ message: 'Goal not found' });
     }
 
+    const io = req.app.get('io');
+    emitSavingsChanged(io, req.user.coupleId);
+
     res.json({ goal });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
@@ -102,6 +132,9 @@ router.delete('/goal/:id', async (req, res) => {
     if (!goal) {
       return res.status(404).json({ message: 'Goal not found' });
     }
+
+    const io = req.app.get('io');
+    emitSavingsChanged(io, req.user.coupleId);
 
     res.json({ message: 'Goal deleted' });
   } catch (err) {
@@ -155,6 +188,8 @@ router.post('/goal/:id/deposit', async (req, res) => {
       });
     }
 
+    emitSavingsChanged(io, req.user.coupleId);
+
     if (!wasComplete && goal.currentAmount >= goal.targetAmount) {
       await gamification.addXP(req.user._id, gamification.XP.COMPLETE_GOAL, io);
       const goals = await Savings.find({ coupleId: req.user.coupleId });
@@ -202,6 +237,9 @@ router.post('/goal/:id/clear', async (req, res) => {
     goal.transactions = [];
     await goal.save();
 
+    const io = req.app.get('io');
+    emitSavingsChanged(io, req.user.coupleId);
+
     res.json({ goal });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
@@ -216,6 +254,10 @@ router.delete('/clear', async (req, res) => {
     }
 
     await Savings.deleteMany({ coupleId: req.user.coupleId });
+
+    const io = req.app.get('io');
+    emitSavingsChanged(io, req.user.coupleId);
+
     res.json({ message: 'All savings data cleared' });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });

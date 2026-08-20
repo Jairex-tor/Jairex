@@ -70,10 +70,18 @@ io.use((socket, next) => {
   }
 });
 
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   console.log('User connected:', socket.id);
 
   socket.join(`user-${socket.userId}`);
+
+  // Auto-join couple room so messages are delivered even when not on Chat page
+  try {
+    const user = await User.findById(socket.userId).select('coupleId');
+    if (user?.coupleId) {
+      socket.join(`couple-${user.coupleId}`);
+    }
+  } catch {}
 
   socket.on('join-couple', (coupleId) => {
     socket.join(`couple-${coupleId}`);
