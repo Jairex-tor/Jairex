@@ -275,6 +275,44 @@ router.post('/goal/:id/deposit', async (req, res) => {
   }
 });
 
+router.post('/goal/:id/withdraw', async (req, res) => {
+  try {
+    const { amount, note, category } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: 'Enter a valid withdrawal amount' });
+    }
+
+    const goal = await findGoal(req.params.id, req.user);
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
+
+    if (amount > goal.currentAmount) {
+      return res.status(400).json({ message: 'Cannot withdraw more than available balance' });
+    }
+
+    goal.transactions.push({
+      amount: -amount,
+      note: note || 'Withdrawal',
+      category: category || 'other',
+      addedBy: req.user._id,
+    });
+
+    goal.currentAmount -= amount;
+    await goal.save();
+
+    const io = req.app.get('io');
+    if (goal.groupId) {
+      emitSavingsChanged(io, `group-${goal.groupId}`);
+    } else {
+      emitSavingsChanged(io, req.user.coupleId);
+    }
+
+    res.json({ goal });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
 router.post('/goal/:id/clear', async (req, res) => {
   try {
     const goal = await findGoal(req.params.id, req.user);

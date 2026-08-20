@@ -6,6 +6,111 @@ import api from '../../utils/api';
 
 const QUICK_AMOUNTS = [5, 10, 25, 50];
 
+function WithdrawModal({ goal, onSubmit, onClose }) {
+  const { formatCurrency } = useSettings();
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [category, setCategory] = useState('other');
+  const [submitting, setSubmitting] = useState(false);
+
+  const CATEGORIES = [
+    { value: 'other', label: '📦 Other' },
+    { value: 'food', label: '🍔 Food' },
+    { value: 'entertainment', label: '🎮 Entertainment' },
+    { value: 'gifts', label: '🎁 Gifts' },
+    { value: 'travel', label: '✈️ Travel' },
+    { value: 'shopping', label: '🛍️ Shopping' },
+    { value: 'bills', label: '📄 Bills' },
+  ];
+
+  const handleQuick = (val) => setAmount(Math.min(val, goal.currentAmount).toString());
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const parsed = parseFloat(amount);
+    if (!parsed || parsed <= 0 || parsed > goal.currentAmount) return;
+    setSubmitting(true);
+    await onSubmit({ amount: parsed, note: note.trim(), category });
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__header">
+          <div className="modal__title">Withdraw</div>
+          <button className="modal__close" onClick={onClose}>×</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '9px', color: '#AAA' }}>
+              From: <span style={{ color: 'var(--mc-diamond)' }}>{goal.name}</span>
+            </div>
+            <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '8px', color: '#888' }}>
+              Available: <span style={{ color: 'var(--mc-gold)' }}>{formatCurrency(goal.currentAmount)}</span>
+            </div>
+
+            <div>
+              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '8px', color: 'var(--mc-text)', marginBottom: '8px' }}>Quick Amount</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                {QUICK_AMOUNTS.filter((v) => v <= goal.currentAmount).map((val) => (
+                  <button key={val} type="button" className="mc-slot"
+                    style={{
+                      width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: amount === val.toString() ? 'inset -1px -1px 0 var(--mc-border-dark), inset 1px 1px 0 var(--mc-border-light), 0 0 0 2px var(--mc-redstone)' : undefined,
+                    }}
+                    onClick={() => handleQuick(val)}>
+                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '9px', color: 'var(--mc-redstone)' }}>{formatCurrency(val)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '8px', color: 'var(--mc-text)', marginBottom: '6px' }}>Amount</div>
+              <input type="text" inputMode="decimal" className="mc-input" placeholder="0.00"
+                value={amount}
+                onChange={(e) => {
+                  let v = e.target.value.replace(/[^0-9.]/g, '');
+                  if (v.includes('.')) { const parts = v.split('.'); v = parts[0] + '.' + (parts[1] || '').slice(0, 2); }
+                  const num = parseFloat(v);
+                  if (num > goal.currentAmount) v = goal.currentAmount.toString();
+                  setAmount(v);
+                }}
+                style={{ fontSize: '22px' }} />
+            </div>
+
+            <div>
+              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '8px', color: 'var(--mc-text)', marginBottom: '6px' }}>Reason (optional)</div>
+              <input type="text" className="mc-input" placeholder="e.g., used for emergency" value={note} onChange={(e) => setNote(e.target.value.slice(0, 100))} />
+            </div>
+
+            <div>
+              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '8px', color: 'var(--mc-text)', marginBottom: '6px' }}>Category</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {CATEGORIES.map((c) => (
+                  <button key={c.value} type="button" onClick={() => setCategory(c.value)}
+                    style={{
+                      background: category === c.value ? 'var(--mc-redstone)' : 'var(--mc-slot-bg)',
+                      border: `2px solid ${category === c.value ? 'var(--mc-redstone)' : 'var(--mc-border-dark)'}`,
+                      color: '#FFF', fontFamily: 'var(--mc-font-body)', fontSize: '16px', padding: '4px 10px', cursor: 'pointer',
+                    }}>{c.label}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="modal__footer">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button variant="danger" type="submit" disabled={submitting || !amount || parseFloat(amount) <= 0}>
+              {submitting ? 'Withdrawing...' : `Withdraw ${amount ? formatCurrency(parseFloat(amount)) : ''}`}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function DepositModal({ goal, onSubmit, onClose }) {
   const { formatCurrency } = useSettings();
   const [amount, setAmount] = useState('');
@@ -264,7 +369,7 @@ function daysUntilCompletion(currentAmount, targetAmount, timesPerWeek, amountPe
   return weeks * 7;
 }
 
-function GoalCard({ goal, onDeposit, onEdit, onDelete }) {
+function GoalCard({ goal, onDeposit, onWithdraw, onEdit, onDelete }) {
   const { formatCurrency } = useSettings();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [recurringEnabled, setRecurringEnabled] = useState(goal.recurring?.enabled || false);
@@ -427,8 +532,21 @@ function GoalCard({ goal, onDeposit, onEdit, onDelete }) {
         )}
       </div>
 
-      {/* Deposit button */}
-      {!isComplete && (
+      {/* Deposit/Withdraw buttons */}
+      {goal.currentAmount > 0 && (
+        <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+          {!isComplete && (
+            <Button variant="gold" fullWidth onClick={() => onDeposit(goal)}>
+              Deposit
+            </Button>
+          )}
+          <Button variant="secondary" fullWidth onClick={() => onWithdraw(goal)}
+            style={{ borderColor: 'var(--mc-redstone)', color: 'var(--mc-redstone)' }}>
+            Withdraw
+          </Button>
+        </div>
+      )}
+      {!isComplete && goal.currentAmount <= 0 && (
         <div style={{ marginTop: '12px' }}>
           <Button variant="gold" fullWidth onClick={() => onDeposit(goal)}>
             Deposit
@@ -497,8 +615,9 @@ function GoalCard({ goal, onDeposit, onEdit, onDelete }) {
   );
 }
 
-export default function SavingsTracker({ goals = [], onDeposit, onEdit, onDelete }) {
+export default function SavingsTracker({ goals = [], onDeposit, onWithdraw, onEdit, onDelete }) {
   const [depositGoal, setDepositGoal] = useState(null);
+  const [withdrawGoal, setWithdrawGoal] = useState(null);
 
   const sortedGoals = useMemo(() => {
     return [...goals].sort((a, b) => {
@@ -516,6 +635,13 @@ export default function SavingsTracker({ goals = [], onDeposit, onEdit, onDelete
       await onDeposit(depositGoal._id || depositGoal.id, data);
     }
     setDepositGoal(null);
+  };
+
+  const handleWithdrawSubmit = async (data) => {
+    if (withdrawGoal) {
+      await onWithdraw(withdrawGoal._id || withdrawGoal.id, data);
+    }
+    setWithdrawGoal(null);
   };
 
   if (goals.length === 0) {
@@ -546,6 +672,7 @@ export default function SavingsTracker({ goals = [], onDeposit, onEdit, onDelete
             key={goal._id || goal.id}
             goal={goal}
             onDeposit={(g) => setDepositGoal(g)}
+            onWithdraw={(g) => setWithdrawGoal(g)}
             onEdit={onEdit}
             onDelete={onDelete}
           />
@@ -557,6 +684,14 @@ export default function SavingsTracker({ goals = [], onDeposit, onEdit, onDelete
           goal={depositGoal}
           onSubmit={handleDepositSubmit}
           onClose={() => setDepositGoal(null)}
+        />
+      )}
+
+      {withdrawGoal && (
+        <WithdrawModal
+          goal={withdrawGoal}
+          onSubmit={handleWithdrawSubmit}
+          onClose={() => setWithdrawGoal(null)}
         />
       )}
     </>

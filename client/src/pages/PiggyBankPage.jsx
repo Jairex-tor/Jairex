@@ -161,6 +161,21 @@ export default function PiggyBankPage() {
     }
   };
 
+  const handleWithdraw = async (goalId, withdrawData) => {
+    try {
+      setError(null);
+      const { data } = await api.post(`/savings/goal/${goalId}/withdraw`, withdrawData);
+      const updatedGoal = data.goal || data;
+      setGoals((prev) =>
+        prev.map((g) => ((g._id || g.id) === goalId ? updatedGoal : g))
+      );
+      setFeedTrigger((t) => t + 1);
+      refresh();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to withdraw');
+    }
+  };
+
   const handleEditGoal = (goal) => {
     setEditingGoal(goal);
     setShowGoalForm(true);
@@ -426,6 +441,7 @@ export default function PiggyBankPage() {
                 <SavingsTracker
                   goals={goals}
                   onDeposit={handleDeposit}
+                  onWithdraw={handleWithdraw}
                   onEdit={handleEditGoal}
                   onDelete={handleDeleteGoal}
                 />
