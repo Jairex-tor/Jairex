@@ -83,6 +83,20 @@ export default function LoginPage() {
             </div>
           </form>
 
+          <div style={{ textAlign: 'center', marginTop: '8px' }}>
+            <Link
+              to="/forgot-password"
+              style={{
+                fontFamily: "'VT323', monospace",
+                fontSize: '18px',
+                color: 'var(--mc-diamond)',
+                textDecoration: 'none',
+              }}
+            >
+              Forgot Password?
+            </Link>
+          </div>
+
           <div className="auth__footer">
             New here?{' '}
             <Link to="/register">Create an account</Link>

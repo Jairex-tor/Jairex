@@ -11,6 +11,11 @@ import FYPPage from './pages/FYPPage'
 import ChatPage from './pages/ChatPage'
 import ProfilePage from './pages/ProfilePage'
 import SettingsPage from './pages/SettingsPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
+import WishlistPage from './pages/WishlistPage'
+import LeaderboardPage from './pages/LeaderboardPage'
+import BudgetPage from './pages/BudgetPage'
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -21,7 +26,7 @@ function ProtectedRoute({ children }) {
   return children
 }
 
-const PUBLIC_ROUTES = ['/', '/login', '/register']
+const PUBLIC_ROUTES = ['/', '/login', '/register', '/forgot-password', '/reset-password']
 
 export default function App() {
   const { loading, isAuthenticated, logout } = useAuth()
@@ -98,6 +103,8 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route
             path="/piggybank"
             element={
@@ -127,6 +134,30 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wishlist"
+            element={
+              <ProtectedRoute>
+                <WishlistPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/leaderboard"
+            element={
+              <ProtectedRoute>
+                <LeaderboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/budget"
+            element={
+              <ProtectedRoute>
+                <BudgetPage />
               </ProtectedRoute>
             }
           />

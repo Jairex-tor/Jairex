@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -15,9 +15,14 @@ const usersRoutes = require('./routes/users');
 const notificationsRoutes = require('./routes/notifications');
 const challengesRoutes = require('./routes/challenges');
 const groupsRoutes = require('./routes/groups');
+const wishlistRoutes = require('./routes/wishlist');
+const milestonesRoutes = require('./routes/milestones');
+const budgetRoutes = require('./routes/budget');
 const Message = require('./models/Message');
 const User = require('./models/User');
 const Group = require('./models/Group');
+const Savings = require('./models/Savings');
+const { notifyUserPush } = require('./services/push');
 
 const app = express();
 const server = http.createServer(app);
@@ -43,6 +48,9 @@ app.use('/api/users', usersRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/challenges', challengesRoutes);
 app.use('/api/groups', groupsRoutes);
+app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/couple', milestonesRoutes);
+app.use('/api/budget', budgetRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -143,6 +151,73 @@ io.on('connection', async (socket) => {
     console.log('User disconnected:', socket.id);
   });
 });
+
+// Recurring auto-deposit scheduler — runs every hour
+async function processRecurringDeposits() {
+  try {
+    const now = new Date();
+    const goals = await Savings.find({ 'recurring.enabled': true, 'recurring.nextDeposit': { $lte: now } });
+    for (const goal of goals) {
+      // Skip completed goals
+      if (goal.currentAmount >= goal.targetAmount) {
+        goal.recurring.enabled = false;
+        goal.recurring.nextDeposit = null;
+        await goal.save();
+        continue;
+      }
+
+      goal.transactions.push({
+        amount: goal.amountPerDeposit,
+        note: 'Auto-deposit',
+        addedBy: goal.userId,
+      });
+      goal.currentAmount += goal.amountPerDeposit;
+
+      const intervals = { daily: 1, weekly: 7, biweekly: 14, monthly: 30 };
+      const next = new Date(now);
+      next.setDate(next.getDate() + (intervals[goal.recurring.frequency] || 7));
+      goal.recurring.nextDeposit = next;
+
+      await goal.save();
+
+      // Update streak for auto-deposit + send push
+      try {
+        const user = await User.findById(goal.userId);
+        if (user) {
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const lastDeposit = user.lastDepositDate ? new Date(user.lastDepositDate) : null;
+          const lastDay = lastDeposit ? new Date(lastDeposit.getFullYear(), lastDeposit.getMonth(), lastDeposit.getDate()) : null;
+          const dayDiff = lastDay ? Math.floor((today - lastDay) / 86400000) : -1;
+          if (dayDiff > 0) user.streak = (user.streak || 0) + 1;
+          else if (dayDiff < 0) user.streak = 1;
+          user.lastDepositDate = now;
+          if ((user.streak || 0) > (user.bestStreak || 0)) user.bestStreak = user.streak;
+          await user.save();
+
+          // Send push notification
+          try {
+            await notifyUserPush(user, {
+              title: 'Auto-Deposit',
+              body: `${goal.amountPerDeposit} was deposited to "${goal.goalName}"`,
+              icon: '🪙',
+              url: '/piggybank',
+            });
+          } catch { /* push is best-effort */ }
+        }
+      } catch { /* streak + push is non-critical */ }
+
+      if (io) {
+        if (goal.groupId) io.to(`group-${goal.groupId}`).emit('savings-changed', { groupId: goal.groupId });
+        else if (goal.coupleId) io.to(`couple-${goal.coupleId}`).emit('savings-changed', { coupleId: goal.coupleId });
+      }
+
+      console.log(`[AUTO-DEPOSIT] Goal "${goal.goalName}" +${goal.amountPerDeposit} (next: ${next.toDateString()})`);
+    }
+  } catch (err) {
+    console.error('Recurring deposit error:', err.message);
+  }
+}
+setInterval(processRecurringDeposits, 60 * 60 * 1000);
 
 const PORT = process.env.PORT || 5000;
 

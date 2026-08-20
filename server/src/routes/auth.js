@@ -1,5 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
 const Couple = require('../models/Couple');
 const Notification = require('../models/Notification');
@@ -297,6 +298,105 @@ router.post('/couple/dissolve/cancel', auth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
+});
+
+// Rate limit tracker for forgot-password (in-memory, resets on server restart)
+const forgotPasswordAttempts = new Map();
+
+// Forgot password - send reset token
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email required' });
+
+    // Rate limit: max 5 requests per email per hour
+    const key = email.toLowerCase().trim();
+    const now = Date.now();
+    const attempts = forgotPasswordAttempts.get(key) || [];
+    const recent = attempts.filter((t) => now - t < 3600000);
+    if (recent.length >= 5) {
+      return res.status(429).json({ message: 'Too many attempts. Please try again later.' });
+    }
+    recent.push(now);
+    forgotPasswordAttempts.set(key, recent);
+
+    const user = await User.findOne({ email: key });
+    if (!user) {
+      return res.json({ message: 'If an account exists with that email, a reset link has been sent.' });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    user.resetToken = crypto.createHash('sha256').update(token).digest('hex');
+    user.resetTokenExpiry = new Date(Date.now() + 3600000);
+    await user.save();
+
+    const resetUrl = `${process.env.CLIENT_URL || 'https://jairex.onrender.com'}/reset-password?token=${token}`;
+    console.log(`[PASSWORD RESET] ${user.username} (${user.email}): ${resetUrl}`);
+
+    res.json({ message: 'If an account exists with that email, a reset link has been sent.' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Reset password with token
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ message: 'Token and password required' });
+    if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+    const user = await User.findOne({
+      resetToken: hashedToken,
+      resetTokenExpiry: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    user.password = password;
+    user.resetToken = null;
+    user.resetTokenExpiry = null;
+    await user.save();
+
+    res.json({ message: 'Password reset successful. You can now log in.' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Save push notification subscription
+router.post('/push/subscribe', auth, async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    if (!subscription) return res.status(400).json({ message: 'Subscription required' });
+
+    req.user.pushSubscription = subscription;
+    await req.user.save();
+    res.json({ message: 'Push subscription saved' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Remove push subscription
+router.post('/push/unsubscribe', auth, async (req, res) => {
+  try {
+    req.user.pushSubscription = null;
+    await req.user.save();
+    res.json({ message: 'Push subscription removed' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Get VAPID public key for push notifications
+router.get('/push/vapid-key', (req, res) => {
+  const key = process.env.VAPID_PUBLIC_KEY;
+  if (!key) return res.status(404).json({ message: 'Push notifications not configured' });
+  res.json({ vapidKey: key });
 });
 
 module.exports = router;

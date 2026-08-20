@@ -13,6 +13,11 @@ const transactionSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  category: {
+    type: String,
+    enum: ['food', 'entertainment', 'gifts', 'travel', 'shopping', 'bills', 'savings', 'other'],
+    default: 'savings'
+  },
   addedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -69,6 +74,11 @@ const savingsSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  recurring: {
+    enabled: { type: Boolean, default: false },
+    frequency: { type: String, enum: ['daily', 'weekly', 'biweekly', 'monthly'], default: 'weekly' },
+    nextDeposit: { type: Date, default: null },
   },
   transactions: [transactionSchema],
   createdAt: {

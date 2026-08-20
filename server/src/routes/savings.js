@@ -1,6 +1,7 @@
 const express = require('express');
 const Savings = require('../models/Savings');
 const Couple = require('../models/Couple');
+const User = require('../models/User');
 const auth = require('../middleware/auth');
 const gamification = require('../services/gamification');
 const { notifyUser } = require('../services/notify');
@@ -171,7 +172,7 @@ router.delete('/goal/:id', async (req, res) => {
 
 router.post('/goal/:id/deposit', async (req, res) => {
   try {
-    const { amount, note } = req.body;
+    const { amount, note, category } = req.body;
 
     const goal = await findGoal(req.params.id, req.user);
     if (!goal) return res.status(404).json({ message: 'Goal not found' });
@@ -179,6 +180,7 @@ router.post('/goal/:id/deposit', async (req, res) => {
     goal.transactions.push({
       amount,
       note: note || '',
+      category: category || 'savings',
       addedBy: req.user._id
     });
 
@@ -192,6 +194,28 @@ router.post('/goal/:id/deposit', async (req, res) => {
     await gamification.addXP(req.user._id, gamification.XP.DEPOSIT, io);
     await gamification.grantAchievement(req.user._id, 'first_deposit', io);
     await gamification.grantAchievement(req.user._id, 'hundred_club', io);
+
+    // Update streak
+    const user = await User.findById(req.user._id);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const lastDeposit = user.lastDepositDate ? new Date(user.lastDepositDate) : null;
+    const lastDay = lastDeposit ? new Date(lastDeposit.getFullYear(), lastDeposit.getMonth(), lastDeposit.getDate()) : null;
+    const dayDiff = lastDay ? Math.floor((today - lastDay) / 86400000) : -1;
+
+    if (dayDiff === 0) {
+      // Same day, no change
+    } else if (dayDiff === 1) {
+      user.streak = (user.streak || 0) + 1;
+    } else {
+      user.streak = 1;
+    }
+    user.lastDepositDate = now;
+    if ((user.streak || 0) > (user.bestStreak || 0)) {
+      user.bestStreak = user.streak;
+    }
+    if (user.streak >= 7) await gamification.grantAchievement(req.user._id, 'week_warrior', io);
+    await user.save();
 
     if (goal.groupId) {
       io.to(`group-${goal.groupId}`).emit('savings-changed', { groupId: goal.groupId });
@@ -210,6 +234,13 @@ router.post('/goal/:id/deposit', async (req, res) => {
     }
 
     if (!wasComplete && goal.currentAmount >= goal.targetAmount) {
+      // Auto-disable recurring on goal completion
+      if (goal.recurring?.enabled) {
+        goal.recurring.enabled = false;
+        goal.recurring.nextDeposit = null;
+        await goal.save();
+      }
+
       await gamification.addXP(req.user._id, gamification.XP.COMPLETE_GOAL, io);
       const goals = await Savings.find(goal.groupId ? { groupId: goal.groupId } : { coupleId: req.user.coupleId });
       if (goals.every((g) => g.currentAmount >= g.targetAmount)) {
@@ -286,6 +317,54 @@ router.get('/goal/:id/transactions', async (req, res) => {
     if (!goal) return res.status(404).json({ message: 'Goal not found' });
     await goal.populate('transactions.addedBy', 'username avatar');
     res.json({ transactions: goal.transactions });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+router.put('/goal/:id/recurring', async (req, res) => {
+  try {
+    const { enabled, frequency } = req.body;
+    const validFrequencies = ['daily', 'weekly', 'biweekly', 'monthly'];
+    if (frequency && !validFrequencies.includes(frequency)) {
+      return res.status(400).json({ message: `Invalid frequency. Must be: ${validFrequencies.join(', ')}` });
+    }
+
+    const goal = await findGoal(req.params.id, req.user);
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
+    if (goal.currentAmount >= goal.targetAmount) {
+      return res.status(400).json({ message: 'Cannot set recurring on completed goal' });
+    }
+
+    goal.recurring.enabled = enabled;
+    if (frequency) goal.recurring.frequency = frequency;
+
+    if (enabled) {
+      const now = new Date();
+      const intervals = { daily: 1, weekly: 7, biweekly: 14, monthly: 30 };
+      const next = new Date(now);
+      next.setDate(next.getDate() + (intervals[frequency || goal.recurring.frequency] || 7));
+      goal.recurring.nextDeposit = next;
+    } else {
+      goal.recurring.nextDeposit = null;
+    }
+
+    await goal.save();
+    res.json({ goal });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Get streak info
+router.get('/streak', async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('streak bestStreak lastDepositDate');
+    res.json({
+      streak: user.streak || 0,
+      bestStreak: user.bestStreak || 0,
+      lastDepositDate: user.lastDepositDate || null,
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
   }

@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
+import { SOUND_PACKS } from '../utils/sounds';
+import { exportSavingsPDF } from '../utils/exportPDF';
 
 function Toggle({ on, onToggle }) {
   return (
@@ -415,6 +417,41 @@ export default function SettingsPage() {
                   </select>
                 </div>
               </div>
+
+              <div className="settings__item">
+                <div className="settings__item-info">
+                  <div className="settings__item-label">Theme</div>
+                  <div className="settings__item-desc">Light or dark mode</div>
+                </div>
+                <div className="settings__item-control">
+                  <select
+                    className="settings__select"
+                    value={settings.appearance.theme || 'dark'}
+                    onChange={(e) => updateSetting('appearance', 'theme', e.target.value)}
+                  >
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="settings__item">
+                <div className="settings__item-info">
+                  <div className="settings__item-label">Sound Pack</div>
+                  <div className="settings__item-desc">Choose your audio theme</div>
+                </div>
+                <div className="settings__item-control">
+                  <select
+                    className="settings__select"
+                    value={settings.appearance.soundPack || 'classic'}
+                    onChange={(e) => updateSetting('appearance', 'soundPack', e.target.value)}
+                  >
+                    {SOUND_PACKS.map((p) => (
+                      <option key={p.key} value={p.key}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
             {/* Couple Section */}
@@ -481,6 +518,18 @@ export default function SettingsPage() {
                 <div className="settings__item-control">
                   <Button variant="secondary" size="sm" onClick={handleExportData} disabled={saving}>
                     Export
+                  </Button>
+                </div>
+              </div>
+
+              <div className="settings__item">
+                <div className="settings__item-info">
+                  <div className="settings__item-label">Savings Report</div>
+                  <div className="settings__item-desc">Download a PDF summary of your savings</div>
+                </div>
+                <div className="settings__item-control">
+                  <Button variant="secondary" size="sm" onClick={exportSavingsPDF}>
+                    PDF
                   </Button>
                 </div>
               </div>

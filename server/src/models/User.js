@@ -62,6 +62,26 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  bestStreak: {
+    type: Number,
+    default: 0
+  },
+  lastDepositDate: {
+    type: Date,
+    default: null
+  },
+  resetToken: {
+    type: String,
+    default: null
+  },
+  resetTokenExpiry: {
+    type: Date,
+    default: null
+  },
+  pushSubscription: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -89,6 +109,9 @@ userSchema.methods.toJSON = function () {
   delete obj.googleId;
   delete obj.githubId;
   delete obj.__v;
+  delete obj.resetToken;
+  delete obj.resetTokenExpiry;
+  delete obj.pushSubscription;
   obj.level = this.level;
   return obj;
 };

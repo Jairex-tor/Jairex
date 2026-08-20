@@ -1,0 +1,128 @@
+/* ============================================
+   LIGHT THEME OVERRIDES
+   Activated via data-theme="light" on <html>
+   ============================================ */
+
+html[data-theme="light"] {
+  --mc-obsidian: #F5F0E8;
+  --mc-text: #2D2D2D;
+  --mc-text-shadow: #D4C8B0;
+  --mc-border-light: #C8BCA8;
+  --mc-border-dark: #A09880;
+  --mc-stone: #D4C8B0;
+  --mc-stone-dark: #C8BCA8;
+  --mc-slot-bg: #B8AD98;
+  --mc-slot-border: #A09880;
+}
+
+html[data-theme="light"] body {
+  background-color: #EDE8D8;
+  color: #2D2D2D;
+}
+
+html[data-theme="light"] .page {
+  background-color: #EDE8D8;
+}
+
+html[data-theme="light"] .mc-block {
+  background-color: #DDD6C4;
+  box-shadow: inset -2px -2px 0 var(--mc-border-dark), inset 2px 2px 0 var(--mc-border-light);
+  color: #2D2D2D;
+}
+
+html[data-theme="light"] .mc-button {
+  color: #2D2D2D;
+}
+
+html[data-theme="light"] .mc-button:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+html[data-theme="light"] .mc-input {
+  background-color: #F0EBE0;
+  color: #2D2D2D;
+  border: 2px solid var(--mc-border-dark);
+}
+
+html[data-theme="light"] .mc-input::placeholder {
+  color: #999;
+}
+
+html[data-theme="light"] .page__title {
+  color: #2D2D2D;
+  text-shadow: 1px 1px 0 var(--mc-text-shadow);
+}
+
+html[data-theme="light"] .page {
+  color: #2D2D2D;
+}
+
+html[data-theme="light"] .profile__stat {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-color: var(--mc-border-dark);
+}
+
+html[data-theme="light"] .profile__stat-value {
+  text-shadow: 1px 1px 0 var(--mc-text-shadow);
+}
+
+html[data-theme="light"] .profile__stat-label {
+  color: #666;
+}
+
+html[data-theme="light"] .modal {
+  background-color: #DDD6C4;
+  border-color: var(--mc-border-dark);
+  color: #2D2D2D;
+}
+
+html[data-theme="light"] .modal__title {
+  color: #2D2D2D;
+}
+
+html[data-theme="light"] .modal__body {
+  color: #2D2D2D;
+}
+
+html[data-theme="light"] ::selection {
+  background-color: var(--mc-diamond);
+  color: #1B1029;
+}
+
+html[data-theme="light"] ::-webkit-scrollbar-track {
+  background-color: #C8BCA8;
+  border-color: #B8AD98;
+}
+
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background-color: #A09880;
+}
+
+/* Sidebar / Navbar light overrides */
+html[data-theme="light"] .app-nav {
+  background-color: #C8BCA8;
+  border-color: #B8AD98;
+}
+
+html[data-theme="light"] .app-nav .nav-item {
+  color: #2D2D2D;
+}
+
+html[data-theme="light"] .app-nav .nav-item--active {
+  background-color: rgba(0,0,0,0.08);
+  color: #2D2D2D;
+}
+
+html[data-theme="light"] .app-nav .nav-item:hover:not(.nav-item--active) {
+  background-color: rgba(0,0,0,0.04);
+}
+
+html[data-theme="light"] .chat__message--sent {
+  background-color: var(--mc-emerald) !important;
+  color: #FFF !important;
+}
+
+html[data-theme="light"] .chat__message--received {
+  background-color: #E8E0D0 !important;
+  color: #2D2D2D !important;
+}

@@ -20,6 +20,10 @@ const coupleSchema = new mongoose.Schema({
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     requestedAt: { type: Date, default: null }
   },
+  anniversaryDate: {
+    type: Date,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

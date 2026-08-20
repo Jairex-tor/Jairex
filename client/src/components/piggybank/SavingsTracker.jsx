@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import ProgressBar from '../common/ProgressBar';
 import Button from '../common/Button';
 import { useSettings } from '../../context/SettingsContext';
+import api from '../../utils/api';
 
 const QUICK_AMOUNTS = [5, 10, 25, 50];
 
@@ -218,6 +219,10 @@ function daysUntilCompletion(currentAmount, targetAmount, timesPerWeek, amountPe
 function GoalCard({ goal, onDeposit, onEdit, onDelete }) {
   const { formatCurrency } = useSettings();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [recurringEnabled, setRecurringEnabled] = useState(goal.recurring?.enabled || false);
+  const [recurringFreq, setRecurringFreq] = useState(goal.recurring?.frequency || 'weekly');
+  const [recurringLoading, setRecurringLoading] = useState(false);
+  const [recurringError, setRecurringError] = useState(null);
 
   const daysLeft = daysUntilCompletion(
     goal.currentAmount,
@@ -226,6 +231,36 @@ function GoalCard({ goal, onDeposit, onEdit, onDelete }) {
     goal.amountPerDeposit
   );
   const isComplete = goal.currentAmount >= goal.targetAmount;
+
+  const handleRecurringToggle = async (enabled) => {
+    setRecurringLoading(true);
+    setRecurringError(null);
+    try {
+      await api.put(`/savings/goal/${goal._id || goal.id}/recurring`, { enabled, frequency: recurringFreq });
+      setRecurringEnabled(enabled);
+    } catch {
+      setRecurringError('Failed to update');
+      setTimeout(() => setRecurringError(null), 2000);
+    } finally {
+      setRecurringLoading(false);
+    }
+  };
+
+  const handleRecurringFreqChange = async (freq) => {
+    setRecurringFreq(freq);
+    setRecurringError(null);
+    if (recurringEnabled) {
+      setRecurringLoading(true);
+      try {
+        await api.put(`/savings/goal/${goal._id || goal.id}/recurring`, { enabled: true, frequency: freq });
+      } catch {
+        setRecurringError('Failed to update');
+        setTimeout(() => setRecurringError(null), 2000);
+      } finally {
+        setRecurringLoading(false);
+      }
+    }
+  };
 
   return (
     <div
@@ -350,6 +385,64 @@ function GoalCard({ goal, onDeposit, onEdit, onDelete }) {
           <Button variant="gold" fullWidth onClick={() => onDeposit(goal)}>
             Deposit
           </Button>
+        </div>
+      )}
+
+      {/* Recurring auto-deposit toggle */}
+      {!isComplete && (
+        <div style={{
+          marginTop: '12px',
+          padding: '12px',
+          background: recurringEnabled ? 'rgba(0,200,83,0.08)' : 'rgba(0,0,0,0.15)',
+          borderRadius: '6px',
+          border: recurringEnabled ? '1px solid rgba(0,200,83,0.2)' : '1px solid rgba(255,255,255,0.06)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: recurringEnabled ? '8px' : 0 }}>
+            <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '8px', color: recurringEnabled ? 'var(--mc-emerald)' : '#888' }}>
+              ⏰ Auto-Deposit
+            </div>
+            <button
+              onClick={() => handleRecurringToggle(!recurringEnabled)}
+              disabled={recurringLoading}
+              style={{
+                width: '36px', height: '18px', borderRadius: '9px', border: 'none', cursor: recurringLoading ? 'wait' : 'pointer',
+                background: recurringEnabled ? 'var(--mc-emerald)' : '#555',
+                position: 'relative', transition: 'background 0.2s',
+              }}
+            >
+              <div style={{
+                width: '14px', height: '14px', borderRadius: '50%', background: '#FFF',
+                position: 'absolute', top: '2px',
+                left: recurringEnabled ? '20px' : '2px',
+                transition: 'left 0.2s',
+              }} />
+            </button>
+          </div>
+          {recurringEnabled && (
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {['daily', 'weekly', 'biweekly', 'monthly'].map((freq) => (
+                <button
+                  key={freq}
+                  onClick={() => handleRecurringFreqChange(freq)}
+                  disabled={recurringLoading}
+                  style={{
+                    fontFamily: "'VT323', monospace", fontSize: '15px', padding: '3px 10px',
+                    borderRadius: '4px', border: 'none', cursor: 'pointer',
+                    background: recurringFreq === freq ? 'var(--mc-emerald)' : 'rgba(255,255,255,0.08)',
+                    color: recurringFreq === freq ? '#FFF' : '#AAA',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {freq}
+                </button>
+              ))}
+            </div>
+          )}
+          {recurringError && (
+            <div style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: 'var(--mc-redstone)', marginTop: '6px' }}>
+              {recurringError}
+            </div>
+          )}
         </div>
       )}
     </div>

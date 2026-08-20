@@ -18,6 +18,8 @@ const DEFAULT_SETTINGS = {
     soundEffects: true,
     volume: 70,
     currency: 'USD',
+    theme: 'dark',
+    soundPack: 'classic',
   },
 }
 
@@ -46,6 +48,7 @@ export function SettingsProvider({ children }) {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+    document.documentElement.setAttribute('data-theme', settings.appearance.theme || 'dark')
   }, [settings])
 
   const updateSetting = useCallback((section, key, value) => {

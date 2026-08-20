@@ -49,6 +49,37 @@ const TABS = [
     ),
   },
   {
+    key: 'wishlist',
+    label: 'WISH LIST',
+    path: '/wishlist',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+      </svg>
+    ),
+  },
+  {
+    key: 'leaderboard',
+    label: 'RANKS',
+    path: '/leaderboard',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 6 9 6 9zm12 0h1.5a2.5 2.5 0 0 0 0-5C17 4 18 9 18 9zM6 9c0 6-3 12-3 12h18s-3-6-3-12" />
+      </svg>
+    ),
+  },
+  {
+    key: 'budget',
+    label: 'BUDGET',
+    path: '/budget',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <path d="M21 12a9 9 0 1 1-9-9" />
+        <path d="M21 3v9h-9" />
+      </svg>
+    ),
+  },
+  {
     key: 'settings',
     label: 'SETTINGS',
     path: '/settings',

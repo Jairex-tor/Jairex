@@ -6,6 +6,7 @@ import { SettingsProvider } from './context/SettingsContext'
 import { GamificationProvider } from './context/GamificationContext'
 import App from './App'
 import './styles/minecraft-theme.css'
+import './styles/light-theme.css'
 import './styles/global.css'
 import './styles/pages.css'
 
@@ -22,3 +23,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>
 )
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

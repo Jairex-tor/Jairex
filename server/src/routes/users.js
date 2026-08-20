@@ -112,6 +112,8 @@ router.put('/password', async (req, res) => {
     }
 
     req.user.password = newPassword;
+    req.user.resetToken = null;
+    req.user.resetTokenExpiry = null;
     await req.user.save();
     res.json({ message: 'Password updated' });
   } catch (err) {

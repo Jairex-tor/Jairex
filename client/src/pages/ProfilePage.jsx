@@ -69,7 +69,7 @@ export default function ProfilePage() {
   const { formatCurrency } = useSettings();
   const [profile, setProfile] = useState(null);
   const [coupleInfo, setCoupleInfo] = useState(null);
-  const [stats, setStats] = useState({ totalSaved: 0, goalsCompleted: 0, goalsCount: 0, totalDeposits: 0, postsCount: 0, daysActive: 0, streak: 0 });
+  const [stats, setStats] = useState({ totalSaved: 0, goalsCompleted: 0, goalsCount: 0, totalDeposits: 0, postsCount: 0, daysActive: 0, streak: 0, bestStreak: 0 });
   const [achievements, setAchievements] = useState([]);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -130,6 +130,7 @@ export default function ProfilePage() {
           postsCount: p.stats?.postsCount ?? p.postsCount ?? 0,
           daysActive: p.stats?.daysActive ?? p.daysActive ?? 0,
           streak: p.stats?.streak ?? p.streak ?? p.currentStreak ?? 0,
+          bestStreak: p.stats?.bestStreak ?? p.bestStreak ?? 0,
         });
         setAchievements(p.achievements || []);
         setEditForm({ username: p.username || user?.username || '', avatar: p.avatar || user?.avatar || '🧑‍🌾' });
@@ -473,8 +474,14 @@ export default function ProfilePage() {
                 <div className="profile__stat-label">Days Active</div>
               </div>
               <div className="profile__stat">
-                <div className="profile__stat-value">{stats.streak}</div>
+                <div className="profile__stat-value" style={stats.streak > 0 ? { color: '#FFA500', textShadow: '0 0 8px rgba(255,165,0,0.5)' } : undefined}>
+                  {stats.streak > 0 ? '🔥 ' : ''}{stats.streak}
+                </div>
                 <div className="profile__stat-label">Day Streak</div>
+              </div>
+              <div className="profile__stat">
+                <div className="profile__stat-value">{stats.bestStreak}</div>
+                <div className="profile__stat-label">Best Streak</div>
               </div>
             </div>
 
