@@ -20,11 +20,20 @@ export default function PiggyBank({
   me = {},
   partner = {},
   feedTrigger = 0,
+  members = null,
 }) {
   const { formatCurrency } = useSettings();
   const [isAnimating, setIsAnimating] = useState(false);
   const [coins, setCoins] = useState([]);
   const [activeFeeder, setActiveFeeder] = useState(null);
+
+  const chars = useMemo(() => {
+    if (members && members.length > 0) return members;
+    const list = [];
+    if (partner && partner.username) list.push({ ...partner, side: 'left' });
+    list.push({ ...me, side: 'right' });
+    return list;
+  }, [members, me, partner]);
 
   const progress = useMemo(() => {
     if (!targetAmount || targetAmount <= 0) return 0;
@@ -66,8 +75,6 @@ export default function PiggyBank({
   }, [feedTrigger, runFeedAnimation]);
 
   const fillHeight = 68 * progress;
-  const meName = me.username || 'You';
-  const partnerName = partner.username || 'Partner';
 
   return (
     <div
@@ -119,37 +126,27 @@ export default function PiggyBank({
           </div>
         ))}
 
-        {/* Partner character (left) */}
-        <div
-          className={`pig-stage__char pig-stage__char--left${activeFeeder === 'left' ? ' pig-stage__char--feeding' : ''}`}
-        >
-          <MinecraftCharacter
-            avatar={partner.avatar}
-            username={partner.username}
-            size={120}
-            state={activeFeeder === 'left' ? 'feeding' : 'walk'}
-            shirt="#3E8948"
-            pants="#2C3E70"
-            onReact={() => playClick()}
-          />
-          <span className="pig-stage__char-name">{partnerName}</span>
-        </div>
-
-        {/* Me character (right) */}
-        <div
-          className={`pig-stage__char pig-stage__char--right${activeFeeder === 'right' ? ' pig-stage__char--feeding' : ''}`}
-        >
-          <MinecraftCharacter
-            avatar={me.avatar}
-            username={me.username}
-            size={120}
-            state={activeFeeder === 'right' ? 'feeding' : 'walk'}
-            shirt="#3F6DB3"
-            pants="#2C3E70"
-            onReact={() => playClick()}
-          />
-          <span className="pig-stage__char-name">{meName}</span>
-        </div>
+        {/* Characters */}
+        {chars.map((c, idx) => {
+          const total = chars.length;
+          const side = idx === 0 ? 'left' : idx === total - 1 ? 'right' : 'left';
+          const cls = `pig-stage__char pig-stage__char--${side}${activeFeeder === side ? ' pig-stage__char--feeding' : ''}`;
+          const shirtColors = ['#3E8948', '#3F6DB3', '#E85D75', '#9B59B6', '#E67E22', '#1ABC9C'];
+          return (
+            <div key={c._id || idx} className={cls}>
+              <MinecraftCharacter
+                avatar={c.avatar}
+                username={c.username}
+                size={120}
+                state={activeFeeder === side ? 'feeding' : 'walk'}
+                shirt={shirtColors[idx % shirtColors.length]}
+                pants="#2C3E70"
+                onReact={() => playClick()}
+              />
+              <span className="pig-stage__char-name">{c.username || 'You'}</span>
+            </div>
+          );
+        })}
 
         {/* Pig */}
         <div className="pig-stage__pig" style={{ position: 'absolute', left: '50%', top: '8%', transform: 'translateX(-50%)', zIndex: 5 }}>

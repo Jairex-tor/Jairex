@@ -26,6 +26,9 @@ export default function PiggyBankPage() {
   const [feedTrigger, setFeedTrigger] = useState(0);
   const [inCouple, setInCouple] = useState(true);
   const [celebrate, setCelebrate] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [groupMembers, setGroupMembers] = useState([]);
 
   useEffect(() => {
     api.get('/auth/couple').then(({ data }) => {
@@ -38,14 +41,23 @@ export default function PiggyBankPage() {
     }).catch(() => {
       setInCouple(false);
     });
+    api.get('/groups').then(({ data }) => {
+      setGroups(data.groups || []);
+    }).catch(() => {});
   }, []);
 
   const fetchGoals = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const { data } = await api.get('/savings/goals');
+      const params = selectedGroup ? { groupId: selectedGroup._id } : {};
+      const { data } = await api.get('/savings/goals', { params });
       setGoals(data.goals || data || []);
+      if (selectedGroup) {
+        setGroupMembers(selectedGroup.members || []);
+      } else {
+        setGroupMembers([]);
+      }
     } catch (err) {
       if (err.response?.status === 400) {
         setInCouple(false);
@@ -56,7 +68,7 @@ export default function PiggyBankPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedGroup]);
 
   useEffect(() => {
     fetchGoals();
@@ -65,12 +77,13 @@ export default function PiggyBankPage() {
   // Realtime sync: refetch goals when partner creates/updates/deposits
   useEffect(() => {
     if (!socket) return;
+    if (selectedGroup) socket.emit('join-group', selectedGroup._id);
     const handler = () => {
       fetchGoals();
     };
     socket.on('savings-changed', handler);
     return () => socket.off('savings-changed', handler);
-  }, [socket, fetchGoals]);
+  }, [socket, fetchGoals, selectedGroup]);
 
   const combinedCurrent = useMemo(
     () => goals.reduce((sum, g) => sum + (g.currentAmount || 0), 0),
@@ -85,7 +98,8 @@ export default function PiggyBankPage() {
   const handleCreateGoal = async (formData) => {
     try {
       setError(null);
-      const { data } = await api.post('/savings/goal', formData);
+      const payload = selectedGroup ? { ...formData, groupId: selectedGroup._id } : formData;
+      const { data } = await api.post('/savings/goal', payload);
       setGoals((prev) => [...prev, data.goal || data]);
       setShowGoalForm(false);
       refresh();
@@ -237,6 +251,48 @@ export default function PiggyBankPage() {
       </div>
 
       <div className="page__body">
+        {/* Group selector */}
+        {groups.length > 0 && (
+          <div style={{ width: '100%', maxWidth: '600px', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button
+                onClick={() => setSelectedGroup(null)}
+                style={{
+                  fontFamily: "'Press Start 2P', monospace",
+                  fontSize: '8px',
+                  padding: '8px 12px',
+                  border: '2px solid',
+                  borderColor: !selectedGroup ? 'var(--mc-gold)' : 'var(--mc-border-dark)',
+                  background: !selectedGroup ? 'rgba(252,219,5,0.15)' : 'rgba(0,0,0,0.2)',
+                  color: !selectedGroup ? 'var(--mc-gold)' : 'var(--mc-text)',
+                  cursor: 'pointer',
+                  textShadow: '1px 1px 0 rgba(0,0,0,0.5)',
+                }}
+              >
+                My Goals
+              </button>
+              {groups.map((g) => (
+                <button
+                  key={g._id}
+                  onClick={() => setSelectedGroup(g)}
+                  style={{
+                    fontFamily: "'Press Start 2P', monospace",
+                    fontSize: '8px',
+                    padding: '8px 12px',
+                    border: '2px solid',
+                    borderColor: selectedGroup?._id === g._id ? 'var(--mc-diamond)' : 'var(--mc-border-dark)',
+                    background: selectedGroup?._id === g._id ? 'rgba(85,255,255,0.15)' : 'rgba(0,0,0,0.2)',
+                    color: selectedGroup?._id === g._id ? 'var(--mc-diamond)' : 'var(--mc-text)',
+                    cursor: 'pointer',
+                    textShadow: '1px 1px 0 rgba(0,0,0,0.5)',
+                  }}
+                >
+                  {g.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {loading ? (
           /* Loading skeleton */
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
@@ -301,13 +357,14 @@ export default function PiggyBankPage() {
                 currentAmount={combinedCurrent}
                 targetAmount={combinedTarget || 1}
                 me={{ avatar: user?.avatar, username: user?.username }}
-                partner={partner}
+                partner={selectedGroup ? {} : partner}
                 feedTrigger={feedTrigger}
+                members={selectedGroup ? groupMembers : null}
               />
             </div>
 
-            {/* Not linked with partner */}
-            {!inCouple && (
+            {/* Not linked with partner and no groups */}
+            {!inCouple && !selectedGroup && (
               <div
                 className="mc-block"
                 style={{
@@ -337,7 +394,7 @@ export default function PiggyBankPage() {
             )}
 
             {/* Your Goals heading */}
-            {inCouple && goals.length > 0 && (
+            {goals.length > 0 && (
               <div style={{ width: '100%', maxWidth: '600px' }}>
                 <div
                   style={{
@@ -348,7 +405,7 @@ export default function PiggyBankPage() {
                     marginBottom: '4px',
                   }}
                 >
-                  Your Goals
+                  Your Goals {selectedGroup ? `- ${selectedGroup.name}` : ''}
                 </div>
                 <div
                   style={{
@@ -362,7 +419,7 @@ export default function PiggyBankPage() {
             )}
 
             {/* Savings Tracker */}
-            {inCouple && (
+            {(inCouple || selectedGroup) && (
               <div style={{ width: '100%', maxWidth: '600px' }}>
                 <SavingsTracker
                   goals={goals}
@@ -374,7 +431,7 @@ export default function PiggyBankPage() {
             )}
 
             {/* Floating add button (mobile / when no goals) */}
-            {inCouple && goals.length === 0 && (
+            {(inCouple || selectedGroup) && goals.length === 0 && (
               <Button variant="primary" onClick={() => setShowGoalForm(true)}>
                 Create Your First Goal
               </Button>

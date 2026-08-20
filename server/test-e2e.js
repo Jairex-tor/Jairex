@@ -148,9 +148,11 @@ async function run() {
   r = await req('DELETE', `/api/posts/${postId}`, { token: token1 });
   check('delete post', r.status === 200);
 
-  // Disconnect couple
-  r = await req('POST', '/api/auth/couple/disconnect', { token: token1 });
-  check('disconnect couple', r.status === 200);
+  // Dissolve couple (request + approve)
+  r = await req('POST', '/api/auth/couple/dissolve/request', { token: token1 });
+  check('dissolve request', r.status === 200);
+  r = await req('POST', '/api/auth/couple/dissolve/approve', { token: token2 });
+  check('dissolve approve', r.status === 200);
 
   // Delete account
   r = await req('DELETE', '/api/users/account', { token: token2 });

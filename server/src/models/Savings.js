@@ -29,7 +29,12 @@ const savingsSchema = new mongoose.Schema({
   coupleId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Couple',
-    required: true
+    default: null
+  },
+  groupId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Group',
+    default: null
   },
   goalName: {
     type: String,

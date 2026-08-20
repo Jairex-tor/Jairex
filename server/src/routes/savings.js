@@ -19,21 +19,41 @@ async function getPartnerId(coupleId, userId) {
   return null;
 }
 
-function emitSavingsChanged(io, coupleId) {
-  io.to(`couple-${coupleId}`).emit('savings-changed', { coupleId });
+async function findGoal(goalId, user) {
+  const goal = await Savings.findById(goalId);
+  if (!goal) return null;
+  if (goal.groupId) {
+    const Group = require('../models/Group');
+    const group = await Group.findById(goal.groupId);
+    if (!group || !group.members.some((m) => m.toString() === user._id.toString())) return null;
+    return goal;
+  }
+  if (goal.coupleId && user.coupleId && goal.coupleId.toString() === user.coupleId.toString()) return goal;
+  return null;
+}
+
+function emitSavingsChanged(io, room) {
+  if (room) io.to(`couple-${room}`).emit('savings-changed', { id: room });
 }
 
 router.post('/goal', async (req, res) => {
   try {
-    if (!req.user.coupleId) {
-      return res.status(400).json({ message: 'Must be in a couple to create goals' });
-    }
+    const { goalName, targetAmount, timesPerWeek, amountPerDeposit, groupId } = req.body;
 
-    const { goalName, targetAmount, timesPerWeek, amountPerDeposit } = req.body;
+    if (groupId) {
+      const Group = require('../models/Group');
+      const group = await Group.findById(groupId);
+      if (!group || !group.members.some((m) => m.toString() === req.user._id.toString())) {
+        return res.status(403).json({ message: 'Not a member of this group' });
+      }
+    } else if (!req.user.coupleId) {
+      return res.status(400).json({ message: 'Must be in a couple or group to create goals' });
+    }
 
     const goal = new Savings({
       userId: req.user._id,
-      coupleId: req.user.coupleId,
+      coupleId: groupId ? null : req.user.coupleId,
+      groupId: groupId || null,
       goalName,
       targetAmount,
       timesPerWeek,
@@ -45,17 +65,21 @@ router.post('/goal', async (req, res) => {
     await gamification.addXP(req.user._id, gamification.XP.CREATE_GOAL, io);
     await gamification.grantAchievement(req.user._id, 'goal_setter', io);
 
-    const partnerId = await getPartnerId(req.user.coupleId, req.user._id);
-    if (partnerId) {
-      await notifyUser(io, partnerId, {
-        type: 'goal',
-        title: 'New Goal',
-        message: `${req.user.username} created a goal: "${goalName}"`,
-        icon: '🎯',
-        data: { goalId: goal._id },
-      });
+    if (groupId) {
+      emitSavingsChanged(io, `group-${groupId}`);
+    } else {
+      const partnerId = await getPartnerId(req.user.coupleId, req.user._id);
+      if (partnerId) {
+        await notifyUser(io, partnerId, {
+          type: 'goal',
+          title: 'New Goal',
+          message: `${req.user.username} created a goal: "${goalName}"`,
+          icon: '🎯',
+          data: { goalId: goal._id },
+        });
+      }
+      emitSavingsChanged(io, req.user.coupleId);
     }
-    emitSavingsChanged(io, req.user.coupleId);
 
     res.status(201).json({ goal });
   } catch (err) {
@@ -65,6 +89,21 @@ router.post('/goal', async (req, res) => {
 
 router.get('/goals', async (req, res) => {
   try {
+    const { groupId } = req.query;
+
+    if (groupId) {
+      const Group = require('../models/Group');
+      const group = await Group.findById(groupId);
+      if (!group || !group.members.some((m) => m.toString() === req.user._id.toString())) {
+        return res.status(403).json({ message: 'Not a member of this group' });
+      }
+      const goals = await Savings.find({ groupId })
+        .populate('userId', 'username avatar')
+        .populate('transactions.addedBy', 'username avatar')
+        .sort({ createdAt: -1 });
+      return res.json({ goals });
+    }
+
     if (!req.user.coupleId) {
       return res.status(400).json({ message: 'Must be in a couple' });
     }
@@ -82,17 +121,10 @@ router.get('/goals', async (req, res) => {
 
 router.get('/goal/:id', async (req, res) => {
   try {
-    const goal = await Savings.findOne({
-      _id: req.params.id,
-      coupleId: req.user.coupleId
-    })
-      .populate('userId', 'username avatar')
-      .populate('transactions.addedBy', 'username avatar');
-
-    if (!goal) {
-      return res.status(404).json({ message: 'Goal not found' });
-    }
-
+    const goal = await findGoal(req.params.id, req.user);
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
+    await goal.populate('userId', 'username avatar');
+    await goal.populate('transactions.addedBy', 'username avatar');
     res.json({ goal });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
@@ -101,20 +133,17 @@ router.get('/goal/:id', async (req, res) => {
 
 router.put('/goal/:id', async (req, res) => {
   try {
+    const goal = await findGoal(req.params.id, req.user);
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
+
     const { goalName, targetAmount, timesPerWeek, amountPerDeposit, isActive } = req.body;
-
-    const goal = await Savings.findOneAndUpdate(
-      { _id: req.params.id, coupleId: req.user.coupleId },
-      { goalName, targetAmount, timesPerWeek, amountPerDeposit, isActive },
-      { new: true, runValidators: true }
-    );
-
-    if (!goal) {
-      return res.status(404).json({ message: 'Goal not found' });
-    }
+    Object.assign(goal, { goalName, targetAmount, timesPerWeek, amountPerDeposit, isActive });
+    await goal.save();
 
     const io = req.app.get('io');
-    emitSavingsChanged(io, req.user.coupleId);
+    const room = goal.groupId || req.user.coupleId;
+    if (goal.groupId) io.to(`group-${goal.groupId}`).emit('savings-changed', { groupId: goal.groupId });
+    else emitSavingsChanged(io, req.user.coupleId);
 
     res.json({ goal });
   } catch (err) {
@@ -124,17 +153,15 @@ router.put('/goal/:id', async (req, res) => {
 
 router.delete('/goal/:id', async (req, res) => {
   try {
-    const goal = await Savings.findOneAndDelete({
-      _id: req.params.id,
-      coupleId: req.user.coupleId
-    });
+    const goal = await findGoal(req.params.id, req.user);
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
 
-    if (!goal) {
-      return res.status(404).json({ message: 'Goal not found' });
-    }
+    const groupId = goal.groupId;
+    await Savings.deleteOne({ _id: goal._id });
 
     const io = req.app.get('io');
-    emitSavingsChanged(io, req.user.coupleId);
+    if (groupId) io.to(`group-${groupId}`).emit('savings-changed', { groupId });
+    else emitSavingsChanged(io, req.user.coupleId);
 
     res.json({ message: 'Goal deleted' });
   } catch (err) {
@@ -146,14 +173,8 @@ router.post('/goal/:id/deposit', async (req, res) => {
   try {
     const { amount, note } = req.body;
 
-    const goal = await Savings.findOne({
-      _id: req.params.id,
-      coupleId: req.user.coupleId
-    });
-
-    if (!goal) {
-      return res.status(404).json({ message: 'Goal not found' });
-    }
+    const goal = await findGoal(req.params.id, req.user);
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
 
     goal.transactions.push({
       amount,
@@ -172,27 +193,25 @@ router.post('/goal/:id/deposit', async (req, res) => {
     await gamification.grantAchievement(req.user._id, 'first_deposit', io);
     await gamification.grantAchievement(req.user._id, 'hundred_club', io);
 
-    // Notify partner about the deposit
-    const couple = await Couple.findById(req.user.coupleId);
-    const partnerId = couple && couple.partner1 && couple.partner2
-      ? (couple.partner1.toString() === req.user._id.toString() ? couple.partner2 : couple.partner1)
-      : null;
-
-    if (partnerId) {
-      await notifyUser(io, partnerId, {
-        type: 'goal',
-        title: 'New Deposit',
-        message: `${req.user.username} deposited ${amount} to "${goal.goalName}"`,
-        icon: '🪙',
-        data: { goalId: goal._id },
-      });
+    if (goal.groupId) {
+      io.to(`group-${goal.groupId}`).emit('savings-changed', { groupId: goal.groupId });
+    } else {
+      const partnerId = await getPartnerId(req.user.coupleId, req.user._id);
+      if (partnerId) {
+        await notifyUser(io, partnerId, {
+          type: 'goal',
+          title: 'New Deposit',
+          message: `${req.user.username} deposited ${amount} to "${goal.goalName}"`,
+          icon: '🪙',
+          data: { goalId: goal._id },
+        });
+      }
+      emitSavingsChanged(io, req.user.coupleId);
     }
-
-    emitSavingsChanged(io, req.user.coupleId);
 
     if (!wasComplete && goal.currentAmount >= goal.targetAmount) {
       await gamification.addXP(req.user._id, gamification.XP.COMPLETE_GOAL, io);
-      const goals = await Savings.find({ coupleId: req.user.coupleId });
+      const goals = await Savings.find(goal.groupId ? { groupId: goal.groupId } : { coupleId: req.user.coupleId });
       if (goals.every((g) => g.currentAmount >= g.targetAmount)) {
         await gamification.grantAchievement(req.user._id, 'piggy_master', io);
       }
@@ -204,14 +223,17 @@ router.post('/goal/:id/deposit', async (req, res) => {
         icon: '🏆',
         data: { goalId: goal._id },
       });
-      if (partnerId) {
-        await notifyUser(io, partnerId, {
-          type: 'goal',
-          title: 'Goal Complete!',
-          message: `${req.user.username} finished saving for "${goal.goalName}"! 🎉`,
-          icon: '🏆',
-          data: { goalId: goal._id },
-        });
+      if (!goal.groupId) {
+        const partnerId2 = await getPartnerId(req.user.coupleId, req.user._id);
+        if (partnerId2) {
+          await notifyUser(io, partnerId2, {
+            type: 'goal',
+            title: 'Goal Complete!',
+            message: `${req.user.username} finished saving for "${goal.goalName}"! 🎉`,
+            icon: '🏆',
+            data: { goalId: goal._id },
+          });
+        }
       }
     }
 
@@ -221,24 +243,18 @@ router.post('/goal/:id/deposit', async (req, res) => {
   }
 });
 
-// Clear a goal (reset progress)
 router.post('/goal/:id/clear', async (req, res) => {
   try {
-    const goal = await Savings.findOne({
-      _id: req.params.id,
-      coupleId: req.user.coupleId
-    });
-
-    if (!goal) {
-      return res.status(404).json({ message: 'Goal not found' });
-    }
+    const goal = await findGoal(req.params.id, req.user);
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
 
     goal.currentAmount = 0;
     goal.transactions = [];
     await goal.save();
 
     const io = req.app.get('io');
-    emitSavingsChanged(io, req.user.coupleId);
+    if (goal.groupId) io.to(`group-${goal.groupId}`).emit('savings-changed', { groupId: goal.groupId });
+    else emitSavingsChanged(io, req.user.coupleId);
 
     res.json({ goal });
   } catch (err) {
@@ -266,15 +282,9 @@ router.delete('/clear', async (req, res) => {
 
 router.get('/goal/:id/transactions', async (req, res) => {
   try {
-    const goal = await Savings.findOne({
-      _id: req.params.id,
-      coupleId: req.user.coupleId
-    }).populate('transactions.addedBy', 'username avatar');
-
-    if (!goal) {
-      return res.status(404).json({ message: 'Goal not found' });
-    }
-
+    const goal = await findGoal(req.params.id, req.user);
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
+    await goal.populate('transactions.addedBy', 'username avatar');
     res.json({ transactions: goal.transactions });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });

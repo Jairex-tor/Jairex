@@ -139,23 +139,31 @@ router.get('/couple', auth, async (req, res) => {
       ? couple.partner2
       : couple.partner1;
 
-    res.json({ couple: { ...couple.toObject(), partner } });
+    res.json({ couple: { ...couple.toObject(), partner, me: req.user._id } });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
-// Generate or regenerate invite code
+// Generate or regenerate invite code (supports custom codes)
 router.post('/couple/invite', auth, async (req, res) => {
   try {
+    const { customCode } = req.body || {};
     const couple = req.user.coupleId
       ? await Couple.findById(req.user.coupleId)
       : null;
 
     if (!couple) {
+      if (customCode && !Couple.isValidCustomCode(customCode)) {
+        return res.status(400).json({ message: 'Code must be 4-16 letters/numbers' });
+      }
+      if (customCode) {
+        const exists = await Couple.findOne({ inviteCode: customCode.trim().toUpperCase() });
+        if (exists) return res.status(400).json({ message: 'That code is already taken' });
+      }
       const newCouple = new Couple({
         partner1: req.user._id,
-        inviteCode: Couple.generateInviteCode()
+        inviteCode: customCode ? customCode.trim().toUpperCase() : Couple.generateInviteCode()
       });
       await newCouple.save();
       req.user.coupleId = newCouple._id;
@@ -163,7 +171,16 @@ router.post('/couple/invite', auth, async (req, res) => {
       return res.status(201).json({ inviteCode: newCouple.inviteCode, couple: newCouple });
     }
 
-    couple.inviteCode = Couple.generateInviteCode();
+    if (customCode && !Couple.isValidCustomCode(customCode)) {
+      return res.status(400).json({ message: 'Code must be 4-16 letters/numbers' });
+    }
+    if (customCode) {
+      const exists = await Couple.findOne({ inviteCode: customCode.trim().toUpperCase() });
+      if (exists) return res.status(400).json({ message: 'That code is already taken' });
+      couple.inviteCode = customCode.trim().toUpperCase();
+    } else {
+      couple.inviteCode = Couple.generateInviteCode();
+    }
     await couple.save();
     res.json({ inviteCode: couple.inviteCode, couple });
   } catch (err) {
@@ -171,56 +188,98 @@ router.post('/couple/invite', auth, async (req, res) => {
   }
 });
 
-// Disconnect from couple (both partners unlink)
-router.post('/couple/disconnect', auth, async (req, res) => {
+// Request to dissolve couple
+router.post('/couple/dissolve/request', auth, async (req, res) => {
   try {
-    const coupleId = req.user.coupleId;
-    if (!coupleId) {
-      return res.status(400).json({ message: 'Not in a couple' });
+    if (!req.user.coupleId) return res.status(400).json({ message: 'Not in a couple' });
+    const couple = await Couple.findById(req.user.coupleId);
+    if (!couple) return res.status(404).json({ message: 'Couple not found' });
+
+    if (couple.dissolveRequest?.requestedBy) {
+      return res.status(400).json({ message: 'Dissolution already requested' });
     }
 
-    const couple = await Couple.findById(coupleId);
-    if (couple) {
-      if (couple.partner1.toString() === req.user._id.toString()) {
-        couple.partner1 = null;
-      } else if (couple.partner2 && couple.partner2.toString() === req.user._id.toString()) {
-        couple.partner2 = null;
-      }
+    couple.dissolveRequest = { requestedBy: req.user._id, requestedAt: new Date() };
+    await couple.save();
 
-      if (!couple.partner1 && !couple.partner2) {
-        await couple.deleteOne();
-      } else if (!couple.partner1 && couple.partner2) {
-        couple.partner1 = couple.partner2;
-        couple.partner2 = null;
-        await couple.save();
-      } else {
-        await couple.save();
-      }
+    const io = req.app.get('io');
+    const partnerId = couple.partner1.toString() === req.user._id.toString()
+      ? couple.partner2 : couple.partner1;
+
+    if (partnerId) {
+      const { notifyUser } = require('../services/notify');
+      await notifyUser(io, partnerId, {
+        type: 'partner',
+        title: 'Dissolve Request',
+        message: `${req.user.username} wants to dissolve the couple.`,
+        icon: '💔',
+      });
     }
 
-    req.user.coupleId = null;
-    await req.user.save();
+    res.json({ message: 'Dissolution requested', dissolveRequest: couple.dissolveRequest });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
 
-    const otherUserId = couple && couple.partner1
-      ? (couple.partner1.toString() === req.user._id.toString() ? couple.partner2 : couple.partner1)
-      : null;
+// Approve dissolution (partner only)
+router.post('/couple/dissolve/approve', auth, async (req, res) => {
+  try {
+    if (!req.user.coupleId) return res.status(400).json({ message: 'Not in a couple' });
+    const couple = await Couple.findById(req.user.coupleId);
+    if (!couple) return res.status(404).json({ message: 'Couple not found' });
 
-    if (otherUserId) {
-      const other = await User.findById(otherUserId);
-      if (other) {
-        other.coupleId = null;
-        await other.save();
-        await Notification.create({
-          user: other._id,
-          type: 'partner',
-          title: 'Couple Disconnected',
-          message: `${req.user.username} left the couple.`,
-          icon: '💔',
-        });
-      }
+    if (!couple.dissolveRequest?.requestedBy) {
+      return res.status(400).json({ message: 'No pending dissolution request' });
     }
 
-    res.json({ message: 'Disconnected from couple' });
+    if (couple.dissolveRequest.requestedBy.toString() === req.user._id.toString()) {
+      return res.status(400).json({ message: 'Cannot approve your own request' });
+    }
+
+    const p1 = couple.partner1;
+    const p2 = couple.partner2;
+    await couple.deleteOne();
+
+    if (p1) { await User.findByIdAndUpdate(p1, { coupleId: null }); }
+    if (p2) { await User.findByIdAndUpdate(p2, { coupleId: null }); }
+
+    const io = req.app.get('io');
+    const otherId = p1.toString() === req.user._id.toString() ? p2 : p1;
+    if (otherId) {
+      const { notifyUser } = require('../services/notify');
+      await notifyUser(io, otherId, {
+        type: 'partner',
+        title: 'Couple Dissolved',
+        message: 'The couple has been dissolved.',
+        icon: '💔',
+      });
+    }
+
+    res.json({ message: 'Couple dissolved' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Cancel dissolution request
+router.post('/couple/dissolve/cancel', auth, async (req, res) => {
+  try {
+    if (!req.user.coupleId) return res.status(400).json({ message: 'Not in a couple' });
+    const couple = await Couple.findById(req.user.coupleId);
+    if (!couple) return res.status(404).json({ message: 'Couple not found' });
+
+    if (!couple.dissolveRequest?.requestedBy) {
+      return res.status(400).json({ message: 'No pending dissolution request' });
+    }
+
+    if (couple.dissolveRequest.requestedBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Only the requester can cancel' });
+    }
+
+    couple.dissolveRequest = { requestedBy: null, requestedAt: null };
+    await couple.save();
+    res.json({ message: 'Dissolution cancelled' });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
   }

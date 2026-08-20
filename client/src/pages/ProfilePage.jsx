@@ -6,8 +6,10 @@ import Button from '../components/common/Button';
 import BlockCard from '../components/common/BlockCard';
 import Input from '../components/common/Input';
 import ProgressBar from '../components/common/ProgressBar';
+import MinecraftCharacter from '../components/common/MinecraftCharacter';
 import { PixelAvatar } from '../utils/avatar';
-import { playDeposit } from '../utils/sounds';
+import { playDeposit, playClick } from '../utils/sounds';
+import useSocket from '../hooks/useSocket';
 
 const PIXEL_AVATARS = [
   '🧑‍🌾', '👩‍🌾', '⛏️', '🗡️', '🛡️', '🧙',
@@ -79,6 +81,9 @@ export default function ProfilePage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [generatingInvite, setGeneratingInvite] = useState(false);
   const [joiningPartner, setJoiningPartner] = useState(false);
+  const [customInviteCode, setCustomInviteCode] = useState('');
+  const [dissolveLoading, setDissolveLoading] = useState(null);
+  const { socket } = useSocket();
   const avatarInputRef = useRef(null);
 
   const handleAvatarUpload = async (e) => {
@@ -178,19 +183,6 @@ export default function ProfilePage() {
     }
   };
 
-  const handleGenerateInvite = async () => {
-    try {
-      setError(null);
-      setGeneratingInvite(true);
-      const { data } = await api.post('/auth/couple/invite');
-      setInviteCode(data.inviteCode || data.code || '');
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to generate invite code');
-    } finally {
-      setGeneratingInvite(false);
-    }
-  };
-
   const handleJoinPartner = async () => {
     if (!joinCode.trim()) return;
     try {
@@ -205,6 +197,69 @@ export default function ProfilePage() {
       setJoiningPartner(false);
     }
   };
+
+  const handleDissolveRequest = async () => {
+    try {
+      setDissolveLoading('request');
+      setError(null);
+      await api.post('/auth/couple/dissolve/request');
+      await fetchProfile();
+      playClick();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to request dissolution');
+    } finally {
+      setDissolveLoading(null);
+    }
+  };
+
+  const handleDissolveApprove = async () => {
+    try {
+      setDissolveLoading('approve');
+      setError(null);
+      await api.post('/auth/couple/dissolve/approve');
+      await fetchProfile();
+      playClick();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to approve dissolution');
+    } finally {
+      setDissolveLoading(null);
+    }
+  };
+
+  const handleDissolveCancel = async () => {
+    try {
+      setDissolveLoading('cancel');
+      setError(null);
+      await api.post('/auth/couple/dissolve/cancel');
+      await fetchProfile();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to cancel');
+    } finally {
+      setDissolveLoading(null);
+    }
+  };
+
+  const handleGenerateInvite = async () => {
+    try {
+      setError(null);
+      setGeneratingInvite(true);
+      const payload = customInviteCode.trim() ? { customCode: customInviteCode.trim() } : {};
+      const { data } = await api.post('/auth/couple/invite', payload);
+      setInviteCode(data.inviteCode || data.code || '');
+      setCustomInviteCode('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to generate invite code');
+    } finally {
+      setGeneratingInvite(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => fetchProfile();
+    socket.on('new-notification', refresh);
+    return () => socket.off('new-notification', refresh);
+  }, [socket]);
 
   const displayProfile = profile || user || {};
   const avatar = editing ? editForm.avatar : (displayProfile.avatar || '🧑‍🌾');
@@ -423,22 +478,144 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Partner Card */}
+            {/* Partner / Couple Section */}
             <div className="profile__section">
-              <div className="profile__section-title">Partner</div>
+              <div className="profile__section-title">{coupleInfo?.partner ? 'Couple' : 'Partner'}</div>
               {coupleInfo?.partner ? (
-                <div className="profile__partner-card">
-                  <div className="profile__partner-avatar">
-                    <PixelAvatar avatar={coupleInfo.partner.avatar} username={coupleInfo.partner.username} size={40} fontSize={20} />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+                  {/* COUPLE label */}
+                  <div
+                    style={{
+                      fontFamily: "'Press Start 2P', monospace",
+                      fontSize: '11px',
+                      color: '#FF5555',
+                      textShadow: '2px 2px 0 rgba(0,0,0,0.6), 0 0 12px rgba(255,85,85,0.4)',
+                      letterSpacing: '3px',
+                    }}
+                  >
+                    ♥ COUPLE ♥
                   </div>
-                  <div className="profile__partner-info">
-                    <div className="profile__partner-name">
-                      {coupleInfo.partner.username || 'Partner'}
+
+                  {/* Two characters + heart HP bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                    {/* Me */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                      <MinecraftCharacter
+                        avatar={user?.avatar || '🧑‍🌾'}
+                        username={user?.username}
+                        size={100}
+                        shirt="#3F6DB3"
+                        pants="#2C3E70"
+                        onReact={() => playClick()}
+                      />
+                      <div
+                        style={{
+                          fontFamily: "'Press Start 2P', monospace",
+                          fontSize: '8px',
+                          color: 'var(--mc-diamond)',
+                          textShadow: '1px 1px 0 rgba(0,0,0,0.5)',
+                        }}
+                      >
+                        {user?.username || 'You'}
+                      </div>
                     </div>
-                    <div className="profile__partner-since">
-                      Together since {formatDate(coupleInfo.createdAt)}
+
+                    {/* Heart HP Bar */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '2px' }}>
+                        {Array.from({ length: 10 }).map((_, i) => (
+                          <svg key={i} width="14" height="14" viewBox="0 0 16 16">
+                            <path
+                              d="M8 14s-6-4.35-6-7.65C2 3.79 3.79 2 5.35 2 6.41 2 7.35 2.59 8 3.5 8.65 2.59 9.59 2 10.65 2 12.21 2 14 3.79 14 6.35 14 9.65 8 14 8 14z"
+                              fill="#FF0000"
+                              stroke="#8B0000"
+                              strokeWidth="1.5"
+                            />
+                          </svg>
+                        ))}
+                      </div>
+                      <div
+                        style={{
+                          fontFamily: "'VT323', monospace",
+                          fontSize: '16px',
+                          color: '#FF5555',
+                        }}
+                      >
+                        Together since {formatDate(coupleInfo.createdAt)}
+                      </div>
+                    </div>
+
+                    {/* Partner */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                      <MinecraftCharacter
+                        avatar={coupleInfo.partner.avatar || '🧑‍🌾'}
+                        username={coupleInfo.partner.username}
+                        size={100}
+                        shirt="#3E8948"
+                        pants="#2C3E70"
+                        onReact={() => playClick()}
+                      />
+                      <div
+                        style={{
+                          fontFamily: "'Press Start 2P', monospace",
+                          fontSize: '8px',
+                          color: 'var(--mc-emerald)',
+                          textShadow: '1px 1px 0 rgba(0,0,0,0.5)',
+                        }}
+                      >
+                        {coupleInfo.partner.username || 'Partner'}
+                      </div>
                     </div>
                   </div>
+
+                  {/* Dissolve request UI */}
+                  {coupleInfo.dissolveRequest?.requestedBy ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '12px',
+                        background: 'rgba(255,0,0,0.08)',
+                        border: '2px solid rgba(255,85,85,0.3)',
+                        width: '100%',
+                        maxWidth: '360px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontFamily: "'Press Start 2P', monospace",
+                          fontSize: '8px',
+                          color: '#FF5555',
+                          textAlign: 'center',
+                          lineHeight: '1.8',
+                        }}
+                      >
+                        {coupleInfo.dissolveRequest.requestedBy === (user?._id || user?.id)
+                          ? 'Dissolution requested — waiting for partner...'
+                          : 'Partner wants to dissolve the couple'}
+                      </div>
+                      {coupleInfo.dissolveRequest.requestedBy !== (user?._id || user?.id) ? (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <Button variant="primary" size="sm" onClick={handleDissolveApprove} disabled={!!dissolveLoading}>
+                            {dissolveLoading === 'approve' ? '...' : 'Accept'}
+                          </Button>
+                          <Button variant="secondary" size="sm" onClick={handleDissolveCancel} disabled={!!dissolveLoading}>
+                            {dissolveLoading === 'cancel' ? '...' : 'Decline'}
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button variant="secondary" size="sm" onClick={handleDissolveCancel} disabled={!!dissolveLoading}>
+                          {dissolveLoading === 'cancel' ? '...' : 'Cancel Request'}
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <Button variant="secondary" size="sm" onClick={handleDissolveRequest} disabled={!!dissolveLoading}>
+                      {dissolveLoading === 'request' ? '...' : 'Request to Dissolve'}
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <BlockCard variant="stone">
@@ -456,18 +633,34 @@ export default function ProfilePage() {
                       Find your savings buddy!
                     </div>
 
+                    {/* Custom invite code section */}
+                    <div style={{ marginBottom: '12px' }}>
+                      <div
+                        style={{
+                          fontFamily: "'VT323', monospace",
+                          fontSize: '18px',
+                          color: '#AAA',
+                          marginBottom: '8px',
+                        }}
+                      >
+                        Set a custom code or leave blank for random:
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', maxWidth: '300px', margin: '0 auto 10px' }}>
+                        <input
+                          className="mc-input"
+                          value={customInviteCode}
+                          onChange={(e) => setCustomInviteCode(e.target.value.slice(0, 16))}
+                          placeholder="e.g. JAIREX2026"
+                          style={{ flex: 1, fontSize: '16px', padding: '10px 12px', textTransform: 'uppercase', letterSpacing: '1px' }}
+                        />
+                        <Button variant="gold" size="sm" onClick={handleGenerateInvite} disabled={generatingInvite}>
+                          {generatingInvite ? '...' : 'Set Code'}
+                        </Button>
+                      </div>
+                    </div>
+
                     {inviteCode ? (
                       <div style={{ marginBottom: '12px' }}>
-                        <div
-                          style={{
-                            fontFamily: "'VT323', monospace",
-                            fontSize: '18px',
-                            color: '#AAA',
-                            marginBottom: '8px',
-                          }}
-                        >
-                          Share this code with your partner:
-                        </div>
                         <div
                           style={{
                             fontFamily: "'Press Start 2P', monospace",
@@ -487,11 +680,7 @@ export default function ProfilePage() {
                           {copyFeedback ? 'Copied!' : 'Copy Code'}
                         </Button>
                       </div>
-                    ) : (
-                      <Button variant="gold" size="sm" onClick={handleGenerateInvite} style={{ marginBottom: '12px' }} disabled={generatingInvite}>
-                        {generatingInvite ? 'Generating...' : 'Generate Invite Code'}
-                      </Button>
-                    )}
+                    ) : null}
 
                     <div
                       style={{
@@ -501,7 +690,7 @@ export default function ProfilePage() {
                         margin: '8px 0',
                       }}
                     >
-                      — or enter a code —
+                      — or enter a partner's code —
                     </div>
                     <div style={{ display: 'flex', gap: '8px', maxWidth: '300px', margin: '0 auto' }}>
                       <input

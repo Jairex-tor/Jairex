@@ -16,6 +16,10 @@ const coupleSchema = new mongoose.Schema({
     unique: true,
     required: true
   },
+  dissolveRequest: {
+    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    requestedAt: { type: Date, default: null }
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -29,6 +33,13 @@ coupleSchema.statics.generateInviteCode = function () {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
+};
+
+coupleSchema.statics.isValidCustomCode = function (code) {
+  if (!code || typeof code !== 'string') return false;
+  const trimmed = code.trim();
+  if (trimmed.length < 4 || trimmed.length > 16) return false;
+  return /^[A-Za-z0-9]+$/.test(trimmed);
 };
 
 module.exports = mongoose.model('Couple', coupleSchema);

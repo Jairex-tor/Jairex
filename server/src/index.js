@@ -14,8 +14,10 @@ const chatRoutes = require('./routes/chat');
 const usersRoutes = require('./routes/users');
 const notificationsRoutes = require('./routes/notifications');
 const challengesRoutes = require('./routes/challenges');
+const groupsRoutes = require('./routes/groups');
 const Message = require('./models/Message');
 const User = require('./models/User');
+const Group = require('./models/Group');
 
 const app = express();
 const server = http.createServer(app);
@@ -40,6 +42,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/challenges', challengesRoutes);
+app.use('/api/groups', groupsRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -81,10 +84,16 @@ io.on('connection', async (socket) => {
     if (user?.coupleId) {
       socket.join(`couple-${user.coupleId}`);
     }
+    const groups = await Group.find({ members: socket.userId }).select('_id');
+    groups.forEach((g) => socket.join(`group-${g._id}`));
   } catch {}
 
   socket.on('join-couple', (coupleId) => {
     socket.join(`couple-${coupleId}`);
+  });
+
+  socket.on('join-group', (groupId) => {
+    socket.join(`group-${groupId}`);
   });
 
   socket.on('chat-message', async (data) => {
