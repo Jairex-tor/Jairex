@@ -94,6 +94,10 @@ io.on('connection', async (socket) => {
     }
     const groups = await Group.find({ members: socket.userId }).select('_id');
     groups.forEach((g) => socket.join(`group-${g._id}`));
+
+    if (user?.coupleId) {
+      socket.to(`couple-${user.coupleId}`).emit('partner-online', { userId: socket.userId });
+    }
   } catch {}
 
   socket.on('join-couple', (coupleId) => {
@@ -147,8 +151,29 @@ io.on('connection', async (socket) => {
     io.to(`couple-${data.coupleId}`).emit('new-notification', data);
   });
 
-  socket.on('disconnect', () => {
+  socket.on('typing-start', (data) => {
+    const { coupleId } = data;
+    if (coupleId) {
+      socket.to(`couple-${coupleId}`).emit('partner-typing', { userId: socket.userId, typing: true });
+    }
+  });
+
+  socket.on('typing-stop', (data) => {
+    const { coupleId } = data;
+    if (coupleId) {
+      socket.to(`couple-${coupleId}`).emit('partner-typing', { userId: socket.userId, typing: false });
+    }
+  });
+
+  socket.on('disconnect', async () => {
     console.log('User disconnected:', socket.id);
+    try {
+      const user = await User.findById(socket.userId).select('coupleId');
+      if (user?.coupleId) {
+        socket.to(`couple-${user.coupleId}`).emit('partner-typing', { userId: socket.userId, typing: false });
+        socket.to(`couple-${user.coupleId}`).emit('partner-offline', { userId: socket.userId });
+      }
+    } catch {}
   });
 });
 

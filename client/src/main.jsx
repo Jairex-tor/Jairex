@@ -6,7 +6,6 @@ import { SettingsProvider } from './context/SettingsContext'
 import { GamificationProvider } from './context/GamificationContext'
 import App from './App'
 import './styles/minecraft-theme.css'
-import './styles/light-theme.css'
 import './styles/global.css'
 import './styles/pages.css'
 

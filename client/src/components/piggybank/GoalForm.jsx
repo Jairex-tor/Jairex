@@ -8,6 +8,7 @@ const INITIAL_STATE = {
   targetAmount: '',
   timesPerWeek: '',
   amountPerDeposit: '',
+  deadline: '',
 };
 
 export default function GoalForm({ onSubmit, initialData, onCancel }) {
@@ -19,6 +20,7 @@ export default function GoalForm({ onSubmit, initialData, onCancel }) {
           targetAmount: initialData.targetAmount?.toString() || '',
           timesPerWeek: initialData.timesPerWeek?.toString() || '',
           amountPerDeposit: initialData.amountPerDeposit?.toString() || '',
+          deadline: initialData.deadline ? new Date(initialData.deadline).toISOString().split('T')[0] : '',
         }
       : INITIAL_STATE
   );
@@ -103,6 +105,7 @@ export default function GoalForm({ onSubmit, initialData, onCancel }) {
       targetAmount: parseFloat(form.targetAmount),
       timesPerWeek: parseInt(form.timesPerWeek, 10),
       amountPerDeposit: parseFloat(form.amountPerDeposit),
+      deadline: form.deadline || null,
     });
   };
 
@@ -167,6 +170,20 @@ export default function GoalForm({ onSubmit, initialData, onCancel }) {
               placeholder="0.00"
               error={errors.amountPerDeposit}
             />
+
+            <div>
+              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '7px', color: '#999', marginBottom: '6px' }}>
+                DEADLINE (optional)
+              </div>
+              <input
+                type="date"
+                className="mc-input"
+                value={form.deadline}
+                onChange={(e) => setForm((prev) => ({ ...prev, deadline: e.target.value }))}
+                style={{ width: '100%', color: 'var(--mc-text)' }}
+                min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
 
             {/* Auto-calculate section */}
             {weeklyTotal !== null && (

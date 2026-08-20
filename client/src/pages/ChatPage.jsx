@@ -199,6 +199,14 @@ function PartnerChat({ user }) {
   const [uploading, setUploading] = useState(false);
   const [showReactions, setShowReactions] = useState(null);
   const emojiRef = useRef(null);
+  const [partnerTyping, setPartnerTyping] = useState(false);
+  const [partnerOnline, setPartnerOnline] = useState(false);
+  const [editingMsg, setEditingMsg] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const typingTimeout = useRef(null);
 
   useEffect(() => {
     function handleClick() { setShowReactions(null); }
@@ -268,11 +276,40 @@ function PartnerChat({ user }) {
     };
     socket.on('new-message', onNew);
     socket.on('message-reaction', onReaction);
+
+    const onEdited = (payload) => {
+      const msg = payload?.message || payload;
+      setMessages((prev) => prev.map((m) => (m._id === msg._id ? msg : m)));
+    };
+    const onDeleted = (payload) => {
+      setMessages((prev) => prev.filter((m) => m._id !== payload.messageId));
+    };
+    const onTyping = (data) => {
+      if (data.userId === partnerId) setPartnerTyping(data.typing);
+    };
+    const onOnline = (data) => {
+      if (data.userId === partnerId) setPartnerOnline(true);
+    };
+    const onOffline = (data) => {
+      if (data.userId === partnerId) setPartnerOnline(false);
+    };
+
+    socket.on('message-edited', onEdited);
+    socket.on('message-deleted', onDeleted);
+    socket.on('partner-typing', onTyping);
+    socket.on('partner-online', onOnline);
+    socket.on('partner-offline', onOffline);
+
     return () => {
       socket.off('new-message', onNew);
       socket.off('message-reaction', onReaction);
+      socket.off('message-edited', onEdited);
+      socket.off('message-deleted', onDeleted);
+      socket.off('partner-typing', onTyping);
+      socket.off('partner-online', onOnline);
+      socket.off('partner-offline', onOffline);
     };
-  }, [socket, user]);
+  }, [socket, user, partnerId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -341,6 +378,41 @@ function PartnerChat({ user }) {
     }
   };
 
+  const emitTyping = () => {
+    if (!socket || !coupleId) return;
+    socket.emit('typing-start', { coupleId });
+    clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(() => {
+      socket.emit('typing-stop', { coupleId });
+    }, 2000);
+  };
+
+  const handleEdit = async (msgId) => {
+    if (!editText.trim()) return;
+    try {
+      await api.put(`/chat/${msgId}`, { text: editText.trim() });
+      setEditingMsg(null);
+      setEditText('');
+    } catch {}
+  };
+
+  const handleDelete = async (msgId) => {
+    if (!confirm('Delete this message?')) return;
+    try {
+      await api.delete(`/chat/${msgId}`);
+    } catch {}
+  };
+
+  const handleSearch = async (q) => {
+    if (!q.trim()) { setSearchResults(null); return; }
+    try {
+      const { data } = await api.get(`/chat/search?q=${encodeURIComponent(q.trim())}`);
+      setSearchResults(data.messages || []);
+    } catch {
+      setSearchResults([]);
+    }
+  };
+
   if (!partnerId) {
     return (
       <div style={{ textAlign: 'center', padding: '40px 24px' }}>
@@ -354,6 +426,32 @@ function PartnerChat({ user }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Chat header with search */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderBottom: '2px solid var(--mc-border-dark)', background: 'var(--mc-stone-dark)' }}>
+        <div style={{ flex: 1, fontFamily: 'var(--mc-font-pixel)', fontSize: '9px', color: 'var(--mc-text)', textShadow: '1px 1px 0 var(--mc-text-shadow)' }}>
+          {partnerInfo?.username || 'Partner'}
+          <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: partnerOnline ? 'var(--mc-emerald)' : '#888', marginLeft: '6px', verticalAlign: 'middle', boxShadow: partnerOnline ? '0 0 6px var(--mc-emerald)' : 'none' }} />
+        </div>
+        <button onClick={() => { setShowSearch(!showSearch); setSearchResults(null); setSearchQuery(''); }} style={{ background: 'none', border: 'none', color: 'var(--mc-text)', fontSize: '18px', cursor: 'pointer', padding: '4px' }}>🔍</button>
+      </div>
+      {showSearch && (
+        <div style={{ display: 'flex', gap: '6px', padding: '8px 16px', borderBottom: '2px solid var(--mc-border-dark)', background: 'var(--mc-slot-bg)' }}>
+          <input className="mc-input" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); handleSearch(e.target.value); }} placeholder="Search messages..." style={{ flex: 1, fontSize: '14px' }} />
+          <button onClick={() => { setShowSearch(false); setSearchResults(null); setSearchQuery(''); }} style={{ background: 'none', border: 'none', color: 'var(--mc-text)', fontSize: '16px', cursor: 'pointer' }}>✕</button>
+        </div>
+      )}
+      {searchResults && (
+        <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '8px 16px', borderBottom: '2px solid var(--mc-border-dark)', background: 'var(--mc-stone-dark)' }}>
+          {searchResults.length === 0 ? (
+            <div style={{ fontFamily: 'var(--mc-font-body)', fontSize: '16px', color: '#888', textAlign: 'center', padding: '12px' }}>No results</div>
+          ) : searchResults.map((r) => (
+            <div key={r._id} style={{ padding: '6px 8px', borderBottom: '1px solid var(--mc-border-dark)', cursor: 'pointer' }} onClick={() => { setSearchResults(null); setShowSearch(false); setSearchQuery(''); }}>
+              <span style={{ fontFamily: 'var(--mc-font-body)', fontSize: '12px', color: 'var(--mc-gold)' }}>{r.sender?.username}: </span>
+              <span style={{ fontFamily: 'var(--mc-font-body)', fontSize: '16px', color: 'var(--mc-text)' }}>{r.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div
         className="chat__messages"
         style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}
@@ -499,8 +597,27 @@ function PartnerChat({ user }) {
                 style={{ cursor: 'pointer' }}
                 onClick={(e) => { e.stopPropagation(); setShowReactions(showReactions === msg._id ? null : msg._id); }}
               >
-                <div className="chat__message-text">{msg.text}</div>
-                <div className="chat__message-time">{formatTime(msg.createdAt)}</div>
+                {editingMsg === msg._id ? (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <input className="mc-input" value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleEdit(msg._id); if (e.key === 'Escape') setEditingMsg(null); }} style={{ width: '100%', fontSize: '14px', marginBottom: '4px' }} autoFocus />
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button onClick={() => handleEdit(msg._id)} style={{ background: 'var(--mc-emerald)', border: 'none', color: '#fff', fontSize: '10px', fontFamily: 'var(--mc-font-pixel)', padding: '3px 8px', cursor: 'pointer' }}>Save</button>
+                      <button onClick={() => setEditingMsg(null)} style={{ background: 'var(--mc-stone)', border: 'none', color: '#fff', fontSize: '10px', fontFamily: 'var(--mc-font-pixel)', padding: '3px 8px', cursor: 'pointer' }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="chat__message-text">{msg.text}</div>
+                    {msg.edited && <div style={{ fontFamily: 'var(--mc-font-body)', fontSize: '11px', color: '#888', fontStyle: 'italic' }}>(edited)</div>}
+                    <div className="chat__message-time">{formatTime(msg.createdAt)}</div>
+                    {sent && (
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }} onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => { setEditingMsg(msg._id); setEditText(msg.text); }} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: '12px', cursor: 'pointer', padding: 0 }}>Edit</button>
+                        <button onClick={() => handleDelete(msg._id)} style={{ background: 'none', border: 'none', color: '#f66', fontSize: '12px', cursor: 'pointer', padding: 0 }}>Delete</button>
+                      </div>
+                    )}
+                  </>
+                )}
                 <MessageReactions reactions={msg.reactions} messageId={msg._id} myId={myId} onReact={handleReact} />
                 {showReactions === msg._id && (
                   <div
@@ -567,7 +684,7 @@ function PartnerChat({ user }) {
           <div className="chat__input-wrapper" style={{ flex: 1 }}>
             <input
               value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
+              onChange={(e) => { setNewMessage(e.target.value); emitTyping(); }}
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
               className="chat__input"
@@ -575,6 +692,11 @@ function PartnerChat({ user }) {
             />
           </div>
         </div>
+        {partnerTyping && (
+          <div style={{ fontFamily: 'var(--mc-font-body)', fontSize: '14px', color: 'var(--mc-gold)', padding: '2px 0', fontStyle: 'italic' }}>
+            {partnerInfo?.username || 'Partner'} is typing...
+          </div>
+        )}
         <button
           onClick={() => handleSend('coin')}
           className="chat__coin-btn"

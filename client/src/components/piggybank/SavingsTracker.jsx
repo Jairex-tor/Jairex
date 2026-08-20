@@ -10,8 +10,20 @@ function DepositModal({ goal, onSubmit, onClose }) {
   const { formatCurrency } = useSettings();
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const [category, setCategory] = useState('savings');
   const [submitting, setSubmitting] = useState(false);
   const [coinBurst, setCoinBurst] = useState(false);
+
+  const CATEGORIES = [
+    { value: 'savings', label: '💰 Savings' },
+    { value: 'food', label: '🍔 Food' },
+    { value: 'entertainment', label: '🎮 Entertainment' },
+    { value: 'gifts', label: '🎁 Gifts' },
+    { value: 'travel', label: '✈️ Travel' },
+    { value: 'shopping', label: '🛍️ Shopping' },
+    { value: 'bills', label: '📄 Bills' },
+    { value: 'other', label: '📦 Other' },
+  ];
 
   const handleQuick = (val) => {
     setAmount(val.toString());
@@ -23,7 +35,7 @@ function DepositModal({ goal, onSubmit, onClose }) {
     if (!parsed || parsed <= 0) return;
     setSubmitting(true);
     setCoinBurst(true);
-    await onSubmit({ amount: parsed, note: note.trim() });
+    await onSubmit({ amount: parsed, note: note.trim(), category });
     setSubmitting(false);
   };
 
@@ -148,6 +160,42 @@ function DepositModal({ goal, onSubmit, onClose }) {
                 value={note}
                 onChange={(e) => setNote(e.target.value.slice(0, 100))}
               />
+            </div>
+
+            {/* Category selector */}
+            <div>
+              <div
+                style={{
+                  fontFamily: "'Press Start 2P', monospace",
+                  fontSize: '8px',
+                  color: 'var(--mc-text)',
+                  textShadow: '1px 1px 0 var(--mc-text-shadow)',
+                  marginBottom: '6px',
+                }}
+              >
+                Category
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {CATEGORIES.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setCategory(c.value)}
+                    style={{
+                      background: category === c.value ? 'var(--mc-diamond)' : 'var(--mc-slot-bg)',
+                      border: `2px solid ${category === c.value ? 'var(--mc-diamond)' : 'var(--mc-border-dark)'}`,
+                      color: category === c.value ? 'var(--mc-obsidian)' : 'var(--mc-text)',
+                      fontFamily: 'var(--mc-font-body)',
+                      fontSize: '16px',
+                      padding: '4px 10px',
+                      cursor: 'pointer',
+                      boxShadow: category === c.value ? '0 0 8px rgba(74,237,217,0.4)' : undefined,
+                    }}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {coinBurst && (

@@ -334,6 +334,7 @@ export default function FYPPage() {
   const [mediaPreview, setMediaPreview] = useState(null);
   const [posting, setPosting] = useState(false);
   const fileInputRef = useRef(null);
+  const [showQuickShare, setShowQuickShare] = useState(false);
 
   const fetchPosts = useCallback(async () => {
     try {
@@ -366,6 +367,64 @@ export default function FYPPage() {
     setMediaFile(null);
     setMediaPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleQuickShare = async () => {
+    try {
+      const { data } = await api.get('/savings');
+      const goals = data.goals || [];
+      const totalSaved = goals.reduce((sum, g) => sum + (g.currentAmount || 0), 0);
+      const streak = data.streak || 0;
+      const goalSummaries = goals.map((g) => {
+        const pct = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
+        return `${g.goalName}: ${pct}% (${g.currentAmount || 0}/${g.targetAmount})`;
+      }).join('\n');
+
+      const text = `Savings Update! 💰\nTotal saved: $${totalSaved.toFixed(2)}\nStreak: ${streak} days 🔥\n${goalSummaries ? '\nGoals:\n' + goalSummaries : ''}`;
+      setNewPostText(text);
+      setShowQuickShare(false);
+    } catch {
+      try {
+        const { data } = await api.get('/savings');
+        const total = (data.goals || []).reduce((s, g) => s + (g.currentAmount || 0), 0);
+        setNewPostText(`Savings Update! 💰\nTotal saved: $${total.toFixed(2)}`);
+        setShowQuickShare(false);
+      } catch {}
+    }
+  };
+
+  const handleMilestonePost = async () => {
+    try {
+      const { data } = await api.get('/savings');
+      const goals = data.goals || [];
+      const completed = goals.filter((g) => (g.currentAmount || 0) >= (g.targetAmount || 0));
+      if (completed.length > 0) {
+        const names = completed.map((g) => g.goalName).join(', ');
+        setNewPostText(`We did it! 🎉 Completed ${names}! Time to celebrate with our partner! 💑`);
+      } else {
+        const closest = goals.sort((a, b) => {
+          const pctA = a.targetAmount > 0 ? (a.currentAmount || 0) / a.targetAmount : 0;
+          const pctB = b.targetAmount > 0 ? (b.currentAmount || 0) / b.targetAmount : 0;
+          return pctB - pctA;
+        })[0];
+        if (closest) {
+          const pct = closest.targetAmount > 0 ? Math.round((closest.currentAmount / closest.targetAmount) * 100) : 0;
+          setNewPostText(`Our "${closest.goalName}" is ${pct}% there! 💪 Keep saving together!`);
+        } else {
+          setNewPostText("Just started our savings journey together! 💰");
+        }
+      }
+      setShowQuickShare(false);
+    } catch {}
+  };
+
+  const handleStreakPost = async () => {
+    try {
+      const { data } = await api.get('/savings');
+      const streak = data.streak || 0;
+      setNewPostText(`🔥 ${streak}-day savings streak! We're on fire! Keep building those blocks! 🧱`);
+      setShowQuickShare(false);
+    } catch {}
   };
 
   const handlePost = async () => {
@@ -567,6 +626,19 @@ export default function FYPPage() {
                     marginTop: '10px',
                   }}
                 >
+                  {showQuickShare && (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px', width: '100%' }}>
+                      <button onClick={handleQuickShare} style={{ background: 'var(--mc-slot-bg)', border: '2px solid var(--mc-border-dark)', boxShadow: 'var(--mc-shadow-3d-sm)', fontFamily: 'var(--mc-font-pixel)', fontSize: '8px', color: 'var(--mc-text)', padding: '6px 10px', cursor: 'pointer' }}>
+                        💰 Share Savings
+                      </button>
+                      <button onClick={handleMilestonePost} style={{ background: 'var(--mc-slot-bg)', border: '2px solid var(--mc-border-dark)', boxShadow: 'var(--mc-shadow-3d-sm)', fontFamily: 'var(--mc-font-pixel)', fontSize: '8px', color: 'var(--mc-text)', padding: '6px 10px', cursor: 'pointer' }}>
+                        🎉 Milestone
+                      </button>
+                      <button onClick={handleStreakPost} style={{ background: 'var(--mc-slot-bg)', border: '2px solid var(--mc-border-dark)', boxShadow: 'var(--mc-shadow-3d-sm)', fontFamily: 'var(--mc-font-pixel)', fontSize: '8px', color: 'var(--mc-text)', padding: '6px 10px', cursor: 'pointer' }}>
+                        🔥 Streak
+                      </button>
+                    </div>
+                  )}
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -601,6 +673,20 @@ export default function FYPPage() {
                     title="Add video"
                   >
                     🎥
+                  </button>
+                  <button
+                    onClick={() => setShowQuickShare(!showQuickShare)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '22px',
+                      padding: '4px',
+                      color: showQuickShare ? 'var(--mc-gold)' : '#888',
+                    }}
+                    title="Quick share savings"
+                  >
+                    🪙
                   </button>
                   <div style={{ flex: 1 }} />
                   <Button

@@ -8,6 +8,7 @@ import Button from '../components/common/Button';
 import { useAuth } from '../context/AuthContext';
 import { useGamification } from '../context/GamificationContext';
 import { playDeposit, playAchievement } from '../utils/sounds';
+import { fireConfetti } from '../utils/confetti';
 import useSocket from '../hooks/useSocket';
 
 const CONFETTI_COLORS = ['#FCDB05', '#55FF55', '#55FFFF', '#FF55FF', '#FF5555', '#FF9B50'];
@@ -150,6 +151,7 @@ export default function PiggyBankPage() {
       const nowComplete = (updatedGoal.currentAmount || 0) >= (updatedGoal.targetAmount || 0);
       if (!wasComplete && nowComplete) {
         playAchievement();
+        fireConfetti();
         setCelebrate({ name: updatedGoal.goalName || 'Goal' });
         setTimeout(() => setCelebrate(null), 3200);
       }

@@ -67,6 +67,10 @@ const savingsSchema = new mongoose.Schema({
     required: true,
     min: 1
   },
+  deadline: {
+    type: Date,
+    default: null,
+  },
   estimatedCompletionDate: {
     type: Date,
     default: null

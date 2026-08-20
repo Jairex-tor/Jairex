@@ -39,7 +39,7 @@ function emitSavingsChanged(io, room) {
 
 router.post('/goal', async (req, res) => {
   try {
-    const { goalName, targetAmount, timesPerWeek, amountPerDeposit, groupId } = req.body;
+    const { goalName, targetAmount, timesPerWeek, amountPerDeposit, groupId, deadline } = req.body;
 
     if (groupId) {
       const Group = require('../models/Group');
@@ -58,7 +58,8 @@ router.post('/goal', async (req, res) => {
       goalName,
       targetAmount,
       timesPerWeek,
-      amountPerDeposit
+      amountPerDeposit,
+      deadline: deadline || null,
     });
 
     await goal.save();
@@ -137,8 +138,8 @@ router.put('/goal/:id', async (req, res) => {
     const goal = await findGoal(req.params.id, req.user);
     if (!goal) return res.status(404).json({ message: 'Goal not found' });
 
-    const { goalName, targetAmount, timesPerWeek, amountPerDeposit, isActive } = req.body;
-    Object.assign(goal, { goalName, targetAmount, timesPerWeek, amountPerDeposit, isActive });
+    const { goalName, targetAmount, timesPerWeek, amountPerDeposit, isActive, deadline } = req.body;
+    Object.assign(goal, { goalName, targetAmount, timesPerWeek, amountPerDeposit, isActive, deadline: deadline || goal.deadline });
     await goal.save();
 
     const io = req.app.get('io');

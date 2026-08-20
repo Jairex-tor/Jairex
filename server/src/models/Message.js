@@ -37,6 +37,10 @@ const messageSchema = new mongoose.Schema({
     emoji: String,
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   }],
+  edited: {
+    type: Boolean,
+    default: false
+  },
   createdAt: {
     type: Date,
     default: Date.now

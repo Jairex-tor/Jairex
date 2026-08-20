@@ -420,23 +420,6 @@ export default function SettingsPage() {
 
               <div className="settings__item">
                 <div className="settings__item-info">
-                  <div className="settings__item-label">Theme</div>
-                  <div className="settings__item-desc">Light or dark mode</div>
-                </div>
-                <div className="settings__item-control">
-                  <select
-                    className="settings__select"
-                    value={settings.appearance.theme || 'dark'}
-                    onChange={(e) => updateSetting('appearance', 'theme', e.target.value)}
-                  >
-                    <option value="dark">Dark</option>
-                    <option value="light">Light</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="settings__item">
-                <div className="settings__item-info">
                   <div className="settings__item-label">Sound Pack</div>
                   <div className="settings__item-desc">Choose your audio theme</div>
                 </div>

@@ -114,6 +114,80 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+router.put('/:messageId', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !text.trim()) return res.status(400).json({ message: 'Text required' });
+
+    const message = await Message.findById(req.params.messageId);
+    if (!message) return res.status(404).json({ message: 'Message not found' });
+    if (message.sender.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Can only edit your own messages' });
+    }
+    if (message.coupleId?.toString() !== req.user.coupleId?.toString()) {
+      return res.status(403).json({ message: 'Not your couple chat' });
+    }
+
+    message.text = text.trim();
+    message.edited = true;
+    await message.save();
+    await message.populate('sender', 'username avatar');
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`couple-${req.user.coupleId}`).emit('message-edited', { messageId: message._id, message });
+    }
+
+    res.json({ message });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+router.delete('/:messageId', async (req, res) => {
+  try {
+    const message = await Message.findById(req.params.messageId);
+    if (!message) return res.status(404).json({ message: 'Message not found' });
+    if (message.sender.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Can only delete your own messages' });
+    }
+    if (message.coupleId?.toString() !== req.user.coupleId?.toString()) {
+      return res.status(403).json({ message: 'Not your couple chat' });
+    }
+
+    await Message.findByIdAndDelete(req.params.messageId);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`couple-${req.user.coupleId}`).emit('message-deleted', { messageId: req.params.messageId });
+    }
+
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+router.get('/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || !q.trim()) return res.status(400).json({ message: 'Query required' });
+    if (!req.user.coupleId) return res.status(400).json({ message: 'Not in a couple' });
+
+    const messages = await Message.find({
+      coupleId: req.user.coupleId,
+      text: { $regex: q.trim(), $options: 'i' },
+    })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .populate('sender', 'username avatar');
+
+    res.json({ messages });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
 router.post('/:messageId/react', async (req, res) => {
   try {
     const { emoji } = req.body;
