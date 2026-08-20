@@ -96,21 +96,35 @@ router.post('/couple/join', auth, async (req, res) => {
   try {
     const { inviteCode } = req.body;
 
-    if (req.user.coupleId) {
-      return res.status(400).json({ message: 'Already in a couple' });
+    if (!inviteCode || !inviteCode.trim()) {
+      return res.status(400).json({ message: 'Please enter an invite code' });
     }
 
-    const couple = await Couple.findOne({ inviteCode });
+    // If user already has a coupleId, check if it's an empty couple (no partner yet)
+    if (req.user.coupleId) {
+      const existingCouple = await Couple.findById(req.user.coupleId);
+      if (existingCouple && existingCouple.partner2) {
+        return res.status(400).json({ message: 'Already in a couple. Leave your current couple first.' });
+      }
+      if (existingCouple) {
+        await Couple.deleteOne({ _id: existingCouple._id });
+      }
+      req.user.coupleId = null;
+      await req.user.save();
+    }
+
+    const code = inviteCode.trim().toUpperCase();
+    const couple = await Couple.findOne({ inviteCode: code });
     if (!couple) {
-      return res.status(404).json({ message: 'Invalid invite code' });
+      return res.status(404).json({ message: 'Invalid invite code. Check the code and try again.' });
     }
 
     if (couple.partner2) {
-      return res.status(400).json({ message: 'Couple is already full' });
+      return res.status(400).json({ message: 'This code is already taken by another player.' });
     }
 
     if (couple.partner1.toString() === req.user._id.toString()) {
-      return res.status(400).json({ message: 'Cannot join your own couple' });
+      return res.status(400).json({ message: 'This is your own code! Share it with your partner.' });
     }
 
     couple.partner2 = req.user._id;
