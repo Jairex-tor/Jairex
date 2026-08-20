@@ -76,7 +76,7 @@ function getAIResponse(message, ctx = {}) {
     return `Good question! Based on your savings: "${goal.goalName}" is ${Math.round((cur / target) * 100)}% full (${fmt(cur)} of ${fmt(target)}). ${weeks ? `At your pace that's ~${weeks} week${weeks !== 1 ? 's' : ''} to go. ` : ''}Want me to help with a budget or a faster savings pace? 📊`;
   }
   if (totalSaved > 0) {
-    return `You've saved ${fmt(totalSaved)} in total — nice work! Set a goal in the Piggy Bank and I'll give you exact numbers, budgets, and timelines. 💰`;
+    return `You've saved ${fmt(totalSaved)} in total — nice work! Set a goal in the Piggy Bank and I'll give exact numbers, budgets, and timelines. 💰`;
   }
   return "Great question! Once you and your partner create a savings goal, I can give exact numbers, budgets, and paces. What are you saving for? 🎯";
 }
@@ -84,6 +84,105 @@ function getAIResponse(message, ctx = {}) {
 function formatTime(dateStr) {
   const date = new Date(dateStr);
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function isMine(msg, myId) {
+  const sid = msg.sender?._id || msg.sender;
+  return String(sid) === String(myId);
+}
+
+const EMOJI_LIST = [
+  '😀','😂','🥹','😍','🥰','😘','😎','🤩','🥳','😇',
+  '🤗','😏','🤔','😤','😢','😭','🫡','🤝','💪','👍',
+  '👎','❤️','🔥','✨','🎉','🥳','💎','🪙','💰','🐷',
+  '⛏️','🗡️','🛡️','🧱','🏡','🌾','🍎','🍖','🧃','🍫',
+  '🌈','☀️','🌙','⭐','🏆','🎯','📊','📅','🗓️','✅',
+  '❌','⚠️','💡','🎁','🛒','💊','🏠','✈️','🚗','🐾',
+];
+
+function EmojiPicker({ onSelect, onClose }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: '100%',
+        left: '0',
+        marginBottom: '8px',
+        background: 'var(--mc-stone-dark)',
+        border: '2px solid var(--mc-border-dark)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+        padding: '8px',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(8, 1fr)',
+        gap: '4px',
+        zIndex: 100,
+        width: '280px',
+        maxHeight: '200px',
+        overflowY: 'auto',
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {EMOJI_LIST.map((em) => (
+        <button
+          key={em}
+          onClick={() => { onSelect(em); onClose(); }}
+          style={{
+            background: 'none',
+            border: 'none',
+            fontSize: '20px',
+            cursor: 'pointer',
+            padding: '4px',
+            borderRadius: '4px',
+            lineHeight: 1,
+          }}
+          onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+          onMouseLeave={(e) => e.target.style.background = 'none'}
+        >
+          {em}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '👍', '🔥'];
+
+function MessageReactions({ reactions, messageId, myId, onReact }) {
+  if (!reactions || reactions.length === 0) return null;
+
+  const grouped = {};
+  reactions.forEach((r) => {
+    if (!grouped[r.emoji]) grouped[r.emoji] = { count: 0, mine: false };
+    grouped[r.emoji].count++;
+    if (String(r.userId?._id || r.userId) === String(myId)) grouped[r.emoji].mine = true;
+  });
+
+  return (
+    <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+      {Object.entries(grouped).map(([emoji, { count, mine }]) => (
+        <button
+          key={emoji}
+          onClick={() => onReact(messageId, emoji)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2px',
+            padding: '2px 6px',
+            background: mine ? 'rgba(85,255,255,0.15)' : 'rgba(255,255,255,0.06)',
+            border: `1px solid ${mine ? 'rgba(85,255,255,0.3)' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: '10px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            color: '#ccc',
+            fontFamily: 'var(--mc-font-body)',
+          }}
+        >
+          <span>{emoji}</span>
+          {count > 1 && <span>{count}</span>}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function PartnerChat({ user }) {
@@ -95,8 +194,18 @@ function PartnerChat({ user }) {
   const [coupleId, setCoupleId] = useState(user?.coupleId?._id || user?.coupleId || null);
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef(null);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [showReactions, setShowReactions] = useState(null);
+  const emojiRef = useRef(null);
 
-  // Fetch couple + partner info
+  useEffect(() => {
+    function handleClick() { setShowReactions(null); }
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function fetchPartner() {
@@ -111,7 +220,6 @@ function PartnerChat({ user }) {
         }
         setCoupleId(couple?._id || couple?.id || null);
       } catch {
-        // not in a couple
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -120,14 +228,12 @@ function PartnerChat({ user }) {
     return () => { cancelled = true; };
   }, []);
 
-  // Join socket room when couple is known
   useEffect(() => {
     if (socket && coupleId) {
       socket.emit('join-couple', coupleId);
     }
   }, [socket, coupleId]);
 
-  // Fetch message history
   useEffect(() => {
     if (!partnerId) {
       setLoading(false);
@@ -139,7 +245,6 @@ function PartnerChat({ user }) {
         setMessages(data.messages || data || []);
         setPartnerInfo((prev) => data.partner || prev);
       } catch {
-        // silent
       } finally {
         setLoading(false);
       }
@@ -147,29 +252,33 @@ function PartnerChat({ user }) {
     fetchMessages();
   }, [partnerId]);
 
-  // Listen for realtime messages
   useEffect(() => {
     if (!socket) return;
-    const handler = (payload) => {
+    const onNew = (payload) => {
       const msg = payload?.message || payload;
-      setMessages((prev) => [...prev, msg]);
-      const myId = user?._id || user?.id;
-      const isMine =
-        msg.self ||
-        msg.sender === myId ||
-        msg.sender?._id === myId ||
-        msg.sender?.id === myId;
-      if (!isMine) playMessage();
+      setMessages((prev) => {
+        if (prev.some((m) => m._id === msg._id)) return prev;
+        return [...prev, msg];
+      });
+      if (!isMine(msg, user?._id || user?.id)) playMessage();
     };
-    socket.on('new-message', handler);
-    return () => socket.off('new-message', handler);
+    const onReaction = (payload) => {
+      const msg = payload?.message || payload;
+      setMessages((prev) => prev.map((m) => (m._id === msg._id ? msg : m)));
+    };
+    socket.on('new-message', onNew);
+    socket.on('message-reaction', onReaction);
+    return () => {
+      socket.off('new-message', onNew);
+      socket.off('message-reaction', onReaction);
+    };
   }, [socket, user]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = (type = 'text') => {
+  const handleSend = (type = 'text', extra = {}) => {
     if ((!newMessage.trim() && type === 'text') || !socket || !connected) return;
     const text = type === 'coin' ? '🪙' : newMessage.trim();
     socket.emit('chat-message', {
@@ -177,9 +286,52 @@ function PartnerChat({ user }) {
       recipientId: partnerId,
       text,
       type,
+      ...extra,
     });
     if (type === 'text') setNewMessage('');
     playSend();
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !partnerId) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('recipient', partnerId);
+      const { data } = await api.post('/chat/upload', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const msg = data.message;
+      if (socket && connected) {
+        socket.emit('chat-message', {
+          coupleId,
+          recipientId: partnerId,
+          text: '',
+          type: msg.type,
+          mediaUrl: msg.mediaUrl,
+          fileName: msg.fileName,
+        });
+      }
+      setMessages((prev) => {
+        if (prev.some((m) => m._id === msg._id)) return prev;
+        return [...prev, msg];
+      });
+      playSend();
+    } catch {
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleReact = async (messageId, emoji) => {
+    try {
+      await api.post(`/chat/${messageId}/react`, { emoji });
+    } catch {
+    }
+    setShowReactions(null);
   };
 
   const handleKeyDown = (e) => {
@@ -193,14 +345,7 @@ function PartnerChat({ user }) {
     return (
       <div style={{ textAlign: 'center', padding: '40px 24px' }}>
         <div style={{ fontSize: '48px', marginBottom: '12px' }}>💬</div>
-        <div
-          style={{
-            fontFamily: 'var(--mc-font-pixel)',
-            fontSize: '10px',
-            color: '#888',
-            lineHeight: '2',
-          }}
-        >
+        <div style={{ fontFamily: 'var(--mc-font-pixel)', fontSize: '10px', color: '#888', lineHeight: '2' }}>
           Link with your partner to start chatting!
         </div>
       </div>
@@ -209,21 +354,12 @@ function PartnerChat({ user }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Messages */}
       <div
         className="chat__messages"
         style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}
       >
         {!connected && (
-          <div
-            style={{
-              textAlign: 'center',
-              fontFamily: 'var(--mc-font-pixel)',
-              fontSize: '8px',
-              color: '#888',
-              padding: '8px',
-            }}
-          >
+          <div style={{ textAlign: 'center', fontFamily: 'var(--mc-font-pixel)', fontSize: '8px', color: '#888', padding: '8px' }}>
             Reconnecting...
           </div>
         )}
@@ -234,18 +370,13 @@ function PartnerChat({ user }) {
             ))}
           </div>
         )}
-        {messages.map((msg, i) => {
-          const isCoin = msg.type === 'coin';
+        {messages.map((msg) => {
           const myId = user?._id || user?.id;
-          const isSent =
-            msg.self ||
-            msg.sender === myId ||
-            msg.sender?._id === myId ||
-            msg.sender?.id === myId;
+          const sent = isMine(msg, myId);
 
-          if (isCoin) {
+          if (msg.type === 'coin') {
             return (
-              <div key={i} className="chat__message chat__message--coin">
+              <div key={msg._id} className="chat__message chat__message--coin">
                 <div className="chat__message-bubble">
                   <span className="chat__coin-icon">🪙</span>
                   <span className="chat__coin-text">Savings Milestone!</span>
@@ -255,19 +386,138 @@ function PartnerChat({ user }) {
             );
           }
 
+          if (msg.type === 'image') {
+            return (
+              <div
+                key={msg._id}
+                className={`chat__message ${sent ? 'chat__message--sent' : 'chat__message--received'}`}
+                style={{ maxWidth: '70%' }}
+              >
+                {!sent && (
+                  <div className="chat__message-avatar">
+                    {AVATARS[(partnerInfo?.username?.charCodeAt(0) || 0) % AVATARS.length]}
+                  </div>
+                )}
+                <div
+                  className="chat__message-bubble"
+                  style={{ padding: '4px', cursor: 'pointer', position: 'relative' }}
+                  onClick={(e) => { e.stopPropagation(); setShowReactions(showReactions === msg._id ? null : msg._id); }}
+                >
+                  <img
+                    src={msg.mediaUrl}
+                    alt="shared"
+                    style={{ maxWidth: '100%', maxHeight: '260px', display: 'block', imageRendering: 'auto', borderRadius: '2px' }}
+                  />
+                  <div className="chat__message-time">{formatTime(msg.createdAt)}</div>
+                  <MessageReactions reactions={msg.reactions} messageId={msg._id} myId={myId} onReact={handleReact} />
+                  {showReactions === msg._id && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+                        display: 'flex', gap: '2px', background: 'var(--mc-stone-dark)',
+                        border: '2px solid var(--mc-border-dark)', padding: '4px 6px', zIndex: 50,
+                      }}
+                    >
+                      {REACTION_EMOJIS.map((em) => (
+                        <button key={em} onClick={() => handleReact(msg._id, em)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '2px' }}>
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          if (msg.type === 'file') {
+            return (
+              <div
+                key={msg._id}
+                className={`chat__message ${sent ? 'chat__message--sent' : 'chat__message--received'}`}
+              >
+                {!sent && (
+                  <div className="chat__message-avatar">
+                    {AVATARS[(partnerInfo?.username?.charCodeAt(0) || 0) % AVATARS.length]}
+                  </div>
+                )}
+                <div
+                  className="chat__message-bubble"
+                  style={{ cursor: 'pointer', position: 'relative' }}
+                  onClick={(e) => { e.stopPropagation(); setShowReactions(showReactions === msg._id ? null : msg._id); }}
+                >
+                  <a
+                    href={msg.mediaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--mc-diamond)', textDecoration: 'none' }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span style={{ fontSize: '24px' }}>📎</span>
+                    <div>
+                      <div style={{ fontFamily: 'var(--mc-font-body)', fontSize: '16px' }}>{msg.fileName || 'File'}</div>
+                      <div style={{ fontFamily: 'var(--mc-font-body)', fontSize: '13px', color: '#888' }}>Tap to download</div>
+                    </div>
+                  </a>
+                  <div className="chat__message-time">{formatTime(msg.createdAt)}</div>
+                  <MessageReactions reactions={msg.reactions} messageId={msg._id} myId={myId} onReact={handleReact} />
+                  {showReactions === msg._id && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+                        display: 'flex', gap: '2px', background: 'var(--mc-stone-dark)',
+                        border: '2px solid var(--mc-border-dark)', padding: '4px 6px', zIndex: 50,
+                      }}
+                    >
+                      {REACTION_EMOJIS.map((em) => (
+                        <button key={em} onClick={() => handleReact(msg._id, em)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '2px' }}>
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
           return (
             <div
-              key={i}
-              className={`chat__message ${isSent ? 'chat__message--sent' : 'chat__message--received'}`}
+              key={msg._id}
+              className={`chat__message ${sent ? 'chat__message--sent' : 'chat__message--received'}`}
+              style={{ position: 'relative' }}
             >
-              {!isSent && (
+              {!sent && (
                 <div className="chat__message-avatar">
                   {AVATARS[(partnerInfo?.username?.charCodeAt(0) || 0) % AVATARS.length]}
                 </div>
               )}
-              <div className="chat__message-bubble">
+              <div
+                className="chat__message-bubble"
+                style={{ cursor: 'pointer' }}
+                onClick={(e) => { e.stopPropagation(); setShowReactions(showReactions === msg._id ? null : msg._id); }}
+              >
                 <div className="chat__message-text">{msg.text}</div>
                 <div className="chat__message-time">{formatTime(msg.createdAt)}</div>
+                <MessageReactions reactions={msg.reactions} messageId={msg._id} myId={myId} onReact={handleReact} />
+                {showReactions === msg._id && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position: 'absolute', bottom: '100%', left: sent ? 'auto' : '0', right: sent ? '0' : 'auto',
+                      display: 'flex', gap: '2px', background: 'var(--mc-stone-dark)',
+                      border: '2px solid var(--mc-border-dark)', padding: '4px 6px', zIndex: 50,
+                    }}
+                  >
+                    {REACTION_EMOJIS.map((em) => (
+                      <button key={em} onClick={() => handleReact(msg._id, em)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '2px' }}>
+                        {em}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -275,17 +525,55 @@ function PartnerChat({ user }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="chat__input-area">
-        <div className="chat__input-wrapper">
+      {/* Input area */}
+      <div className="chat__input-area" style={{ position: 'relative' }}>
+        {showEmoji && (
+          <div ref={emojiRef}>
+            <EmojiPicker
+              onSelect={(em) => setNewMessage((prev) => prev + em)}
+              onClose={() => setShowEmoji(false)}
+            />
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
           <input
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            className="chat__input"
-            disabled={!connected}
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept="image/*,.pdf,.doc,.docx,.txt,.zip"
+            style={{ display: 'none' }}
           />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="chat__action-btn"
+            disabled={uploading || !connected}
+            title="Send file or photo"
+            style={{
+              background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer',
+              padding: '6px', opacity: uploading ? 0.4 : 1,
+            }}
+          >
+            {uploading ? '⏳' : '📎'}
+          </button>
+          <button
+            onClick={() => setShowEmoji(!showEmoji)}
+            className="chat__action-btn"
+            style={{
+              background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', padding: '6px',
+            }}
+          >
+            😊
+          </button>
+          <div className="chat__input-wrapper" style={{ flex: 1 }}>
+            <input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type a message..."
+              className="chat__input"
+              disabled={!connected}
+            />
+          </div>
         </div>
         <button
           onClick={() => handleSend('coin')}
@@ -321,12 +609,12 @@ function AICoachChat() {
   const [isTyping, setIsTyping] = useState(false);
   const [coachData, setCoachData] = useState({ goals: [], profile: null });
   const messagesEndRef = useRef(null);
+  const [showEmoji, setShowEmoji] = useState(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [aiMessages, isTyping]);
 
-  // Load the user's real data so the coach can give personal advice
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -341,7 +629,6 @@ function AICoachChat() {
           profile: profileRes?.data?.user || profileRes?.data?.profile || null,
         });
       } catch {
-        // silent
       }
     }
     load();
@@ -382,40 +669,15 @@ function AICoachChat() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* AI messages */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-        }}
-      >
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {aiMessages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`chat__message ${msg.isAI ? 'chat__message--received' : 'chat__message--sent'}`}
-          >
+          <div key={msg.id} className={`chat__message ${msg.isAI ? 'chat__message--received' : 'chat__message--sent'}`}>
             {msg.isAI && (
-              <div
-                className="chat__message-avatar"
-                style={{ backgroundColor: 'var(--mc-diamond)', color: 'var(--mc-obsidian)' }}
-              >
+              <div className="chat__message-avatar" style={{ backgroundColor: 'var(--mc-diamond)', color: 'var(--mc-obsidian)' }}>
                 🧑‍🏫
               </div>
             )}
-            <div
-              className="chat__message-bubble"
-              style={
-                msg.isAI
-                  ? {
-                      borderLeft: '3px solid var(--mc-diamond)',
-                    }
-                  : undefined
-              }
-            >
+            <div className="chat__message-bubble" style={msg.isAI ? { borderLeft: '3px solid var(--mc-diamond)' } : undefined}>
               <div className="chat__message-text">{msg.text}</div>
               <div className="chat__message-time">{formatTime(msg.createdAt)}</div>
             </div>
@@ -423,10 +685,7 @@ function AICoachChat() {
         ))}
         {isTyping && (
           <div className="chat__message chat__message--received">
-            <div
-              className="chat__message-avatar"
-              style={{ backgroundColor: 'var(--mc-diamond)', color: 'var(--mc-obsidian)' }}
-            >
+            <div className="chat__message-avatar" style={{ backgroundColor: 'var(--mc-diamond)', color: 'var(--mc-obsidian)' }}>
               🧑‍🏫
             </div>
             <div className="chat__message-bubble">
@@ -444,22 +703,31 @@ function AICoachChat() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="chat__input-area">
-        <div className="chat__input-wrapper">
-          <input
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask your savings coach..."
-            className="chat__input"
+      <div className="chat__input-area" style={{ position: 'relative' }}>
+        {showEmoji && (
+          <EmojiPicker
+            onSelect={(em) => setNewMessage((prev) => prev + em)}
+            onClose={() => setShowEmoji(false)}
           />
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+          <button
+            onClick={() => setShowEmoji(!showEmoji)}
+            style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', padding: '6px' }}
+          >
+            😊
+          </button>
+          <div className="chat__input-wrapper" style={{ flex: 1 }}>
+            <input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask your savings coach..."
+              className="chat__input"
+            />
+          </div>
         </div>
-        <button
-          onClick={handleSend}
-          className="chat__send-btn"
-          disabled={!newMessage.trim()}
-        >
+        <button onClick={handleSend} className="chat__send-btn" disabled={!newMessage.trim()}>
           ➤
         </button>
       </div>
@@ -482,7 +750,6 @@ function GroupsTab() {
       const { data } = await api.get('/challenges');
       setChallenges(data.challenges || []);
     } catch {
-      // silent
     } finally {
       setLoading(false);
     }
@@ -500,13 +767,10 @@ function GroupsTab() {
       playClick();
       setChallenges((prev) =>
         prev.map((c) =>
-          c.key === key
-            ? { ...c, joined: true, members: (c.members || 0) + (c.joined ? 0 : 1) }
-            : c
+          c.key === key ? { ...c, joined: true, members: (c.members || 0) + (c.joined ? 0 : 1) } : c
         )
       );
     } catch {
-      // silent
     } finally {
       setBusyKey(null);
     }
@@ -520,13 +784,10 @@ function GroupsTab() {
       playClick();
       setChallenges((prev) =>
         prev.map((c) =>
-          c.key === key
-            ? { ...c, joined: false, members: Math.max(0, (c.members || 0) - 1) }
-            : c
+          c.key === key ? { ...c, joined: false, members: Math.max(0, (c.members || 0) - 1) } : c
         )
       );
     } catch {
-      // silent
     } finally {
       setBusyKey(null);
     }
@@ -558,51 +819,25 @@ function GroupsTab() {
 
   return (
     <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div
-        style={{
-          fontFamily: 'var(--mc-font-pixel)',
-          fontSize: '11px',
-          color: 'var(--mc-gold)',
-          textShadow: '1px 1px 0 var(--mc-text-shadow)',
-        }}
-      >
+      <div style={{ fontFamily: 'var(--mc-font-pixel)', fontSize: '11px', color: 'var(--mc-gold)', textShadow: '1px 1px 0 var(--mc-text-shadow)' }}>
         Savings Challenges
       </div>
-      <div
-        style={{
-          fontFamily: 'var(--mc-font-body)',
-          fontSize: '18px',
-          color: '#AAA',
-          lineHeight: '1.3',
-        }}
-      >
+      <div style={{ fontFamily: 'var(--mc-font-body)', fontSize: '18px', color: '#AAA', lineHeight: '1.3' }}>
         Join a challenge to earn +10 XP and keep each other motivated!
       </div>
 
       <div>
-        <Button variant="gold" size="sm" onClick={() => setShowCreate(true)}>
-          ＋ Create Challenge
-        </Button>
+        <Button variant="gold" size="sm" onClick={() => setShowCreate(true)}>＋ Create Challenge</Button>
       </div>
 
       {loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="skeleton" style={{ height: '120px' }} />
-          ))}
+          {[1, 2, 3].map((i) => <div key={i} className="skeleton" style={{ height: '120px' }} />)}
         </div>
       )}
 
       {!loading && challenges.length === 0 && (
-        <div
-          style={{
-            fontFamily: "'VT323', monospace",
-            fontSize: '20px',
-            color: '#888',
-            textAlign: 'center',
-            padding: '24px',
-          }}
-        >
+        <div style={{ fontFamily: "'VT323', monospace", fontSize: '20px', color: '#888', textAlign: 'center', padding: '24px' }}>
           No challenges available right now.
         </div>
       )}
@@ -620,53 +855,23 @@ function GroupsTab() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
-            <div
-              style={{
-                width: '48px',
-                height: '48px',
-                backgroundColor: 'var(--mc-slot-bg)',
-                boxShadow: 'var(--mc-shadow-3d-sm)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '24px',
-                flexShrink: 0,
-              }}
-            >
+            <div style={{
+              width: '48px', height: '48px', backgroundColor: 'var(--mc-slot-bg)',
+              boxShadow: 'var(--mc-shadow-3d-sm)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: '24px', flexShrink: 0,
+            }}>
               {group.icon}
             </div>
             <div style={{ flex: 1 }}>
-              <div
-                style={{
-                  fontFamily: 'var(--mc-font-pixel)',
-                  fontSize: '10px',
-                  color: 'var(--mc-text)',
-                  textShadow: '1px 1px 0 var(--mc-text-shadow)',
-                  marginBottom: '4px',
-                }}
-              >
+              <div style={{ fontFamily: 'var(--mc-font-pixel)', fontSize: '10px', color: 'var(--mc-text)', textShadow: '1px 1px 0 var(--mc-text-shadow)', marginBottom: '4px' }}>
                 {group.name}
               </div>
-              <div
-                style={{
-                  fontFamily: 'var(--mc-font-body)',
-                  fontSize: '16px',
-                  color: 'var(--mc-emerald)',
-                }}
-              >
+              <div style={{ fontFamily: 'var(--mc-font-body)', fontSize: '16px', color: 'var(--mc-emerald)' }}>
                 {group.members.toLocaleString()} players
               </div>
             </div>
           </div>
-          <div
-            style={{
-              fontFamily: 'var(--mc-font-body)',
-              fontSize: '20px',
-              color: '#AAA',
-              marginBottom: '12px',
-              lineHeight: '1.3',
-            }}
-          >
+          <div style={{ fontFamily: 'var(--mc-font-body)', fontSize: '20px', color: '#AAA', marginBottom: '12px', lineHeight: '1.3' }}>
             {group.description}
           </div>
           <Button
@@ -681,98 +886,33 @@ function GroupsTab() {
         </div>
       ))}
 
-      {/* Create challenge modal */}
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '460px' }}
-          >
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '460px' }}>
             <div className="modal__header">
               <div className="modal__title">New Challenge</div>
-              <button className="modal__close" onClick={() => setShowCreate(false)}>
-                ×
-              </button>
+              <button className="modal__close" onClick={() => setShowCreate(false)}>×</button>
             </div>
             <div className="modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <div
-                  style={{
-                    fontFamily: "'Press Start 2P', monospace",
-                    fontSize: '7px',
-                    color: '#999',
-                    marginBottom: '6px',
-                  }}
-                >
-                  NAME
-                </div>
-                <input
-                  className="mc-input"
-                  value={createForm.name}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value.slice(0, 60) }))}
-                  placeholder="e.g., No Junk Food August"
-                  style={{ width: '100%' }}
-                />
+                <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '7px', color: '#999', marginBottom: '6px' }}>NAME</div>
+                <input className="mc-input" value={createForm.name} onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value.slice(0, 60) }))} placeholder="e.g., No Junk Food August" style={{ width: '100%' }} />
               </div>
               <div>
-                <div
-                  style={{
-                    fontFamily: "'Press Start 2P', monospace",
-                    fontSize: '7px',
-                    color: '#999',
-                    marginBottom: '6px',
-                  }}
-                >
-                  ICON (any emoji)
-                </div>
-                <input
-                  className="mc-input"
-                  value={createForm.icon}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, icon: e.target.value.slice(0, 4) }))}
-                  placeholder="🎯"
-                  style={{ width: '80px', textAlign: 'center', fontSize: '22px' }}
-                />
+                <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '7px', color: '#999', marginBottom: '6px' }}>ICON (any emoji)</div>
+                <input className="mc-input" value={createForm.icon} onChange={(e) => setCreateForm((f) => ({ ...f, icon: e.target.value.slice(0, 4) }))} placeholder="🎯" style={{ width: '80px', textAlign: 'center', fontSize: '22px' }} />
               </div>
               <div>
-                <div
-                  style={{
-                    fontFamily: "'Press Start 2P', monospace",
-                    fontSize: '7px',
-                    color: '#999',
-                    marginBottom: '6px',
-                  }}
-                >
-                  DESCRIPTION
-                </div>
-                <textarea
-                  className="mc-input"
-                  value={createForm.description}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value.slice(0, 200) }))}
-                  placeholder="What's the challenge?"
-                  rows={3}
-                  style={{ width: '100%', resize: 'vertical' }}
-                />
+                <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '7px', color: '#999', marginBottom: '6px' }}>DESCRIPTION</div>
+                <textarea className="mc-input" value={createForm.description} onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value.slice(0, 200) }))} placeholder="What's the challenge?" rows={3} style={{ width: '100%', resize: 'vertical' }} />
               </div>
               {createError && (
-                <div
-                  style={{
-                    fontFamily: "'VT323', monospace",
-                    fontSize: '18px',
-                    color: 'var(--mc-redstone)',
-                  }}
-                >
-                  {createError}
-                </div>
+                <div style={{ fontFamily: "'VT323', monospace", fontSize: '18px', color: 'var(--mc-redstone)' }}>{createError}</div>
               )}
             </div>
             <div className="modal__footer">
-              <Button variant="secondary" onClick={() => setShowCreate(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleCreate} disabled={creating}>
-                {creating ? 'Creating...' : 'Create Challenge'}
-              </Button>
+              <Button variant="secondary" onClick={() => setShowCreate(false)}>Cancel</Button>
+              <Button variant="primary" onClick={handleCreate} disabled={creating}>{creating ? 'Creating...' : 'Create Challenge'}</Button>
             </div>
           </div>
         </div>
@@ -794,7 +934,6 @@ export default function ChatPage() {
 
   return (
     <div className="chat">
-      {/* Tab bar */}
       <div
         style={{
           display: 'flex',
@@ -807,17 +946,13 @@ export default function ChatPage() {
         {TABS.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => {
-              playClick();
-              setActiveTab(tab.key);
-            }}
+            onClick={() => { playClick(); setActiveTab(tab.key); }}
             style={{
               flex: 1,
               padding: '12px 8px',
               background: activeTab === tab.key ? 'var(--mc-stone-dark)' : 'transparent',
               border: 'none',
-              borderBottom:
-                activeTab === tab.key ? '3px solid var(--mc-diamond)' : '3px solid transparent',
+              borderBottom: activeTab === tab.key ? '3px solid var(--mc-diamond)' : '3px solid transparent',
               cursor: 'pointer',
               display: 'flex',
               flexDirection: 'column',
@@ -832,8 +967,7 @@ export default function ChatPage() {
                 fontFamily: 'var(--mc-font-pixel)',
                 fontSize: '8px',
                 color: activeTab === tab.key ? 'var(--mc-diamond)' : '#888',
-                textShadow:
-                  activeTab === tab.key ? '1px 1px 0 var(--mc-text-shadow)' : 'none',
+                textShadow: activeTab === tab.key ? '1px 1px 0 var(--mc-text-shadow)' : 'none',
               }}
             >
               {tab.label}
@@ -842,7 +976,6 @@ export default function ChatPage() {
         ))}
       </div>
 
-      {/* Tab content */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activeTab === 'partner' && <PartnerChat user={user} />}
         {activeTab === 'ai' && <AICoachChat />}

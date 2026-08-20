@@ -22,9 +22,21 @@ const messageSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['text', 'coin', 'system'],
+    enum: ['text', 'coin', 'system', 'image', 'file'],
     default: 'text'
   },
+  mediaUrl: {
+    type: String,
+    default: null
+  },
+  fileName: {
+    type: String,
+    default: null
+  },
+  reactions: [{
+    emoji: String,
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  }],
   createdAt: {
     type: Date,
     default: Date.now

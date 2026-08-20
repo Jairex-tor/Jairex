@@ -98,17 +98,20 @@ io.on('connection', async (socket) => {
 
   socket.on('chat-message', async (data) => {
     try {
-      const { recipientId, text, type } = data;
+      const { recipientId, text, type, mediaUrl, fileName } = data;
       const coupleId = data.coupleId;
 
-      if (!coupleId || !recipientId || !text) return;
+      if (!coupleId || !recipientId) return;
+      if (!text && type === 'text') return;
 
       const message = new Message({
         coupleId,
         sender: socket.userId,
         recipient: recipientId,
-        text,
+        text: text || '',
         type: type || 'text',
+        mediaUrl: mediaUrl || null,
+        fileName: fileName || null,
       });
 
       await message.save();
@@ -118,6 +121,13 @@ io.on('connection', async (socket) => {
       io.to(`couple-${coupleId}`).emit('new-message', { message });
     } catch (err) {
       console.error('chat-message error:', err.message);
+    }
+  });
+
+  socket.on('message-reaction', (data) => {
+    const { coupleId } = data;
+    if (coupleId) {
+      io.to(`couple-${coupleId}`).emit('message-reaction', data);
     }
   });
 
